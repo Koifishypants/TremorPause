@@ -1,120 +1,150 @@
-let model = null;
-let assessmentMode = false;
-let recordings = { Resting: [], Postural: [], Kinetic: [], Intention: [] };
-
-// CONFIG FOR THE TWO DEVICES
-const configs = {
-    left: { name: null, service: '12345678-1234-5678-1234-56789abcdef0', char: 'abcdef01-1234-5678-1234-56789abcdef0', motor: 'abcdef02-1234-5678-1234-56789abcdef0' },
-    right: { name: 'TREMOR-PRO-X1', service: '19b10000-e8f2-537e-4f6c-d104768a1214', char: '19b10001-e8f2-537e-4f6c-d104768a1214', motor: null }
+// CONFIGURATION MAPPING
+const DEVICEMAP = {
+    left: {
+        service: '12345678-1234-5678-1234-56789abcdef0',
+        char: 'abcdef01-1234-5678-1234-56789abcdef0',
+        motor: 'abcdef02-1234-5678-1234-56789abcdef0'
+    },
+    right: {
+        name: 'TREMOR-PRO-X1',
+        service: '19b10000-e8f2-537e-4f6c-d104768a1214',
+        char: '19b10001-e8f2-537e-4f6c-d104768a1214',
+        motor: null // Add if the Pro-X1 has a separate motor characteristic
+    }
 };
 
-// 1. LOAD MODEL
-fetch('model.json').then(r => r.json()).then(data => { model = data; console.log("Model Loaded"); });
+let model = null;
+let sessionData = [];
+let isRecording = false;
+let buffers = { left: [], right: [] };
+let devices = { left: null, right: null };
 
-// 2. BLUETOOTH CONNECTION
-async function connect(hand) {
-    const config = configs[hand];
+// 1. Load the Model you exported to JSON
+fetch('TremorModel.json')
+    .then(response => response.json())
+    .then(data => { model = data; console.log("AI Model Loaded Successfully"); })
+    .catch(err => alert("Model Load Error: " + err));
+
+// 2. Bluetooth Management
+async function connectBluetooth(side) {
+    const config = DEVICEMAP[side];
     try {
         const device = await navigator.bluetooth.requestDevice({
             filters: config.name ? [{ name: config.name }] : [{ services: [config.service] }],
             optionalServices: [config.service]
         });
+        
         const server = await device.gatt.connect();
         const service = await server.getPrimaryService(config.service);
         const char = await service.getCharacteristic(config.char);
         
-        char.startNotifications();
-        char.addEventListener('characteristicvaluechanged', (e) => handleData(e, hand, service));
-        document.getElementById(`${hand}-status`).innerText = "Connected";
-    } catch (err) { alert("Connect failed: " + err); }
-}
+        devices[side] = { server, service, char };
+        document.getElementById(`${side}-status`).innerText = `${side.toUpperCase()}: Active`;
+        document.getElementById(`${side}-status`).style.color = "#34c759";
 
-// 3. SIGNAL PROCESSING (Simplified features)
-let buffers = { left: [], right: [] };
-async function handleData(event, hand, service) {
-    let raw = new TextDecoder().decode(event.target.value);
-    let vals = raw.split(',').map(Number);
-    if(vals.length < 3) return;
-
-    let mag = Math.sqrt(vals[0]**2 + vals[1]**2 + vals[2]**2);
-    buffers[hand].push(mag);
-
-    if (buffers[hand].length >= 128) {
-        let window = buffers[hand].slice(-128);
-        let features = extractFeatures(window);
-        let severity = runInference(features);
-
-        updateUI(hand, severity);
-
-        if (assessmentMode) {
-            let pos = document.getElementById('position-select').value;
-            recordings[pos].push({ s: severity, f: features[4] });
-        } else {
-            // SWAPPABLE MOTOR LOGIC
-            sendMotorCommand(hand, service, severity);
-        }
-        buffers[hand] = buffers[hand].slice(32); // Step size
+        await char.startNotifications();
+        char.addEventListener('characteristicvaluechanged', (event) => handleIMU(event, side));
+    } catch (error) {
+        console.error(error);
+        alert(`Connection to ${side} failed.`);
     }
 }
 
-function extractFeatures(w) {
-    let mean = w.reduce((a,b)=>a+b)/w.length;
-    let max = Math.max(...w);
-    let energy = w.reduce((a,b)=>a + b*b, 0);
-    let std = Math.sqrt(w.map(x => Math.pow(x - mean, 2)).reduce((a, b) => a + b) / w.length);
-    // Note: FFT implementation omitted for brevity, using mock dom_freq (5.5Hz)
-    return [mean, std, max, energy, 5.5, 0.1]; 
+// 3. Signal Processing (Python extract_features equivalent)
+function handleIMU(event, side) {
+    const value = new TextDecoder().decode(event.target.value);
+    const parts = value.split(',').map(Number);
+    if (parts.length < 3) return;
+
+    // Magnitude Calculation
+    const mag = Math.sqrt(parts[0]**2 + parts[1]**2 + parts[2]**2);
+    buffers[side].push(mag);
+
+    // Windowing (WINDOW_SIZE = 128, STEP_SIZE = 32)
+    if (buffers[side].length >= 128) {
+        const window = buffers[side].slice(-128);
+        const features = calculateFeatures(window);
+        const severity = runInference(features);
+
+        updateUI(side, severity, features[4]);
+        
+        if (isRecording) {
+            sessionData.push({ side, timestamp: Date.now(), severity, ...features });
+        } else {
+            sendMotorFeedback(side, severity);
+        }
+
+        buffers[side] = buffers[side].slice(32); // Slide window
+    }
 }
 
-// 4. ML INFERENCE (Random Forest Interpreter)
+function calculateFeatures(w) {
+    const mean = w.reduce((a, b) => a + b) / w.length;
+    const std = Math.sqrt(w.map(x => Math.pow(x - mean, 2)).reduce((a, b) => a + b) / w.length);
+    const max = Math.max(...w);
+    const energy = w.reduce((a, b) => a + b * b, 0);
+    
+    // Simple Dominant Freq (Zero-crossing approximation for Hz)
+    let crossings = 0;
+    for(let i=1; i<w.length; i++) if((w[i]-mean)*(w[i-1]-mean) < 0) crossings++;
+    const hz = (crossings / 2) * (1 / (w.length * 0.02)); // Assuming ~50Hz sampling
+
+    return [mean, std, max, energy, hz, 0.1]; // 0.1 is placeholder for vibration_rate
+}
+
+// 4. ML Inference Engine
 function runInference(features) {
+    if (!model) return 0;
     let totalProb = 0;
+    
     model.forEach(tree => {
         let node = 0;
         while (tree.feature[node] !== -2) {
             let fIdx = tree.feature[node];
             node = (features[fIdx] <= tree.threshold[node]) ? tree.children_left[node] : tree.children_right[node];
         }
-        // Prob of Tremor (class 1)
-        let val = tree.values[node][0];
-        totalProb += (val[1] > val[0] ? 1 : 0);
+        // Prob of tremor (Class 1)
+        const leafValues = tree.values[node][0];
+        totalProb += (leafValues[1] > leafValues[0] ? 1 : 0);
     });
+    
     return (totalProb / model.length) * 100;
 }
 
-// 5. SWAPPABLE MOTOR LOGIC (Future Drone Motor logic goes here)
-async function sendMotorCommand(hand, service, severity) {
-    const config = configs[hand];
-    if (!config.motor) return;
+// 5. Motor Control (sendMotorFeedback)
+async function sendMotorFeedback(side, severity) {
+    const config = DEVICEMAP[side];
+    if (!config.motor || !devices[side]) return;
+
     try {
-        const motorChar = await service.getCharacteristic(config.motor);
-        let val = Math.floor(Math.min(severity, 100));
+        const motorChar = await devices[side].service.getCharacteristic(config.motor);
+        const val = Math.floor(Math.min(severity, 100));
         await motorChar.writeValueWithoutResponse(new Uint8Array([val]));
-    } catch(e) {}
+    } catch (e) { /* Fail silently to maintain loop speed */ }
 }
 
-function updateUI(hand, sev) {
-    let fill = document.getElementById(`${hand}-fill`);
-    fill.style.width = sev + "%";
-    fill.style.background = sev > 70 ? "#ff3b30" : (sev > 30 ? "#ff9500" : "#4cd964");
+function updateUI(side, sev, hz) {
+    document.getElementById(`${side}-sev`).innerText = `${sev.toFixed(1)}%`;
+    document.getElementById(`${side}-meta`).innerText = `Hz: ${hz.toFixed(1)} | Motor: ${sev > 15 ? 'ON' : 'IDLE'}`;
+    
+    const bar = document.getElementById(`${side}-bar`);
+    bar.style.width = `${sev}%`;
+    bar.style.background = sev > 75 ? "#ff3b30" : (sev > 35 ? "#ff9500" : "#34c759");
 }
 
 function toggleAssessment() {
-    assessmentMode = !assessmentMode;
-    let btn = document.getElementById('record-btn');
-    btn.innerText = assessmentMode ? "STOP RECORDING" : "START RECORDING";
-    btn.className = assessmentMode ? "btn-red" : "";
+    isRecording = true;
+    document.getElementById('record-btn').innerText = "RECORDING...";
+    setTimeout(() => {
+        isRecording = false;
+        document.getElementById('record-btn').innerText = "Recording Complete";
+        document.getElementById('report-link').style.display = "block";
+    }, 10000);
 }
 
-function generateReport() {
-    let html = "<h3>Patient Severity Summary</h3>";
-    for (let pos in recordings) {
-        let data = recordings[pos];
-        if (data.length === 0) continue;
-        let avg = data.reduce((a,b)=>a+b.s,0)/data.length;
-        let peak = Math.max(...data.map(d=>d.s));
-        html += `<div class='card'><b>${pos}</b><br>Avg: ${avg.toFixed(1)}% | Peak: ${peak.toFixed(1)}%</div>`;
-    }
-    document.getElementById('report-content').innerHTML = html;
-    document.getElementById('report-modal').style.display = 'block';
+function downloadReport() {
+    const csvContent = "data:text/csv;charset=utf-8," 
+        + "side,timestamp,severity,mean,std,max,energy,hz\n"
+        + sessionData.map(e => Object.values(e).join(",")).join("\n");
+    window.open(encodeURI(csvContent));
 }

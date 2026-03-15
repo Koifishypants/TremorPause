@@ -1,50 +1,62 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-    <title>TremorPause Web</title>
-    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>TremorPause AI Dashboard</title>
     <style>
-        body { font-family: -apple-system, sans-serif; background: #121212; color: white; padding: 20px; text-align: center; }
-        .card { background: #1e1e1e; border-radius: 15px; padding: 20px; margin-bottom: 20px; border: 1px solid #333; }
-        .severity-bar { height: 20px; background: #333; border-radius: 10px; overflow: hidden; margin: 10px 0; }
-        .fill { height: 100%; width: 0%; transition: width 0.2s, background 0.2s; }
-        button { background: #007aff; color: white; border: none; padding: 15px 30px; border-radius: 10px; font-size: 16px; margin: 5px; }
-        .btn-red { background: #ff3b30; }
-        .report-modal { display:none; position: fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.9); overflow-y: scroll; padding: 20px; box-sizing: border-box; }
+        :root { --primary: #007aff; --bg: #0a0a0a; --card: #1c1c1e; --text: #ffffff; --red: #ff3b30; --green: #34c759; }
+        body { font-family: -apple-system, BlinkMacSystemFont, sans-serif; background: var(--bg); color: var(--text); margin: 0; padding: 20px; }
+        .grid { display: grid; grid-template-columns: 1fr; gap: 15px; }
+        @media (min-width: 600px) { .grid { grid-template-columns: 1fr 1fr; } }
+        .card { background: var(--card); border-radius: 16px; padding: 20px; box-shadow: 0 4px 15px rgba(0,0,0,0.5); }
+        .status { font-size: 12px; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 10px; color: #8e8e93; }
+        .severity-val { font-size: 32px; font-weight: bold; margin: 10px 0; }
+        .bar-bg { height: 12px; background: #333; border-radius: 6px; overflow: hidden; }
+        .bar-fill { height: 100%; width: 0%; transition: width 0.3s ease, background 0.3s ease; }
+        button { width: 100%; background: var(--primary); color: white; border: none; padding: 15px; border-radius: 12px; font-weight: 600; font-size: 16px; cursor: pointer; margin-top: 10px; }
+        button:active { opacity: 0.7; }
+        .btn-outline { background: transparent; border: 2px solid var(--primary); color: var(--primary); }
+        .assessment-tray { margin-top: 20px; border-top: 1px solid #333; padding-top: 20px; }
+        select { width: 100%; padding: 12px; background: #333; color: white; border-radius: 8px; border: none; margin-bottom: 10px; }
     </style>
 </head>
 <body>
-    <h1>TremorPause</h1>
+    <header style="margin-bottom: 30px;">
+        <h1 style="margin: 0;">TremorPause <span style="color: var(--primary);">AI</span></h1>
+        <p style="color: #8e8e93; margin: 5px 0;">Dual-Hand Stabilization & Clinical Report</p>
+    </header>
 
-    <div class="card">
-        <h3>Left Hand (Main)</h3>
-        <button onclick="connect('left')">Connect Left</button>
-        <div class="severity-bar"><div id="left-fill" class="fill"></div></div>
-        <p id="left-status">Disconnected</p>
+    <div class="grid">
+        <div class="card">
+            <div class="status" id="left-status">Left: Disconnected</div>
+            <div class="severity-val" id="left-sev">0.0%</div>
+            <div class="bar-bg"><div id="left-bar" class="bar-fill"></div></div>
+            <p id="left-meta" style="font-size: 14px; color: #8e8e93;">Hz: -- | Motor: --</p>
+            <button onclick="connectBluetooth('left')">Connect Left Hand</button>
+        </div>
+
+        <div class="card">
+            <div class="status" id="right-status">Right: Disconnected</div>
+            <div class="severity-val" id="right-sev">0.0%</div>
+            <div class="bar-bg"><div id="right-bar" class="bar-fill"></div></div>
+            <p id="right-meta" style="font-size: 14px; color: #8e8e93;">Hz: -- | Motor: --</p>
+            <button onclick="connectBluetooth('right')">Connect Right Hand</button>
+        </div>
     </div>
 
-    <div class="card">
-        <h3>Right Hand (TREMOR-PRO-X1)</h3>
-        <button onclick="connect('right')">Connect Right</button>
-        <div class="severity-bar"><div id="right-fill" class="fill"></div></div>
-        <p id="right-status">Disconnected</p>
-    </div>
-
-    <div class="card">
-        <h3>Clinical Assessment</h3>
-        <p>Motors: <span style="color:#ff3b30">INACTIVE</span></p>
-        <select id="position-select" style="padding:10px; width:100%; border-radius:5px;">
-            <option>Resting</option><option>Postural</option>
-            <option>Kinetic</option><option>Intention</option>
-        </select><br><br>
-        <button id="record-btn" onclick="toggleAssessment()">Start Recording</button>
-        <button onclick="generateReport()">View Report</button>
-    </div>
-
-    <div id="report-modal" class="report-modal">
-        <h2>Session Report</h2>
-        <div id="report-content"></div>
-        <button onclick="document.getElementById('report-modal').style.display='none'">Close</button>
+    <div class="card assessment-tray">
+        <h3>Clinical Assessment Mode</h3>
+        <select id="position-select">
+            <option value="Resting">Resting (Hand on lap)</option>
+            <option value="Postural">Postural (Arms extended)</option>
+            <option value="Kinetic">Kinetic (Finger-to-nose)</option>
+            <option value="Intention">Intention (Touching target)</option>
+        </select>
+        <button id="record-btn" class="btn-outline" onclick="toggleAssessment()">Start 10s Recording</button>
+        <div id="report-link" style="margin-top: 15px; display: none;">
+            <button style="background: var(--green);" onclick="downloadReport()">Download CSV Report</button>
+        </div>
     </div>
 
     <script src="app.js"></script>
