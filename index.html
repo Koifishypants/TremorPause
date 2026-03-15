@@ -3,62 +3,564 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>TremorPause AI Dashboard</title>
+    <title>TremorPause AI</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Syne:wght@600;700;800&display=swap" rel="stylesheet">
     <style>
-        :root { --primary: #007aff; --bg: #0a0a0a; --card: #1c1c1e; --text: #ffffff; --red: #ff3b30; --green: #34c759; }
-        body { font-family: -apple-system, BlinkMacSystemFont, sans-serif; background: var(--bg); color: var(--text); margin: 0; padding: 20px; }
-        .grid { display: grid; grid-template-columns: 1fr; gap: 15px; }
-        @media (min-width: 600px) { .grid { grid-template-columns: 1fr 1fr; } }
-        .card { background: var(--card); border-radius: 16px; padding: 20px; box-shadow: 0 4px 15px rgba(0,0,0,0.5); }
-        .status { font-size: 12px; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 10px; color: #8e8e93; }
-        .severity-val { font-size: 32px; font-weight: bold; margin: 10px 0; }
-        .bar-bg { height: 12px; background: #333; border-radius: 6px; overflow: hidden; }
-        .bar-fill { height: 100%; width: 0%; transition: width 0.3s ease, background 0.3s ease; }
-        button { width: 100%; background: var(--primary); color: white; border: none; padding: 15px; border-radius: 12px; font-weight: 600; font-size: 16px; cursor: pointer; margin-top: 10px; }
-        button:active { opacity: 0.7; }
-        .btn-outline { background: transparent; border: 2px solid var(--primary); color: var(--primary); }
-        .assessment-tray { margin-top: 20px; border-top: 1px solid #333; padding-top: 20px; }
-        select { width: 100%; padding: 12px; background: #333; color: white; border-radius: 8px; border: none; margin-bottom: 10px; }
+        /* ── TOKENS ──────────────────────────────────────────────── */
+        :root {
+            --bg:       #080b10;
+            --surface:  #0f1318;
+            --panel:    #141920;
+            --border:   #1e2630;
+            --border2:  #252f3a;
+            --text:     #e8edf2;
+            --muted:    #4a5568;
+            --accent:   #00c2ff;
+            --green:    #34c759;
+            --orange:   #ff9500;
+            --red:      #ff3b30;
+            --mono:     'DM Mono', monospace;
+            --display:  'Syne', sans-serif;
+        }
+
+        /* ── RESET & BASE ────────────────────────────────────────── */
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+        html, body {
+            height: 100%;
+            background: var(--bg);
+            color: var(--text);
+            font-family: var(--mono);
+            font-size: 13px;
+            -webkit-font-smoothing: antialiased;
+            overflow-x: hidden;
+        }
+
+        /* Subtle grid texture */
+        body::before {
+            content: '';
+            position: fixed;
+            inset: 0;
+            background-image:
+                linear-gradient(rgba(0,194,255,.025) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(0,194,255,.025) 1px, transparent 1px);
+            background-size: 40px 40px;
+            pointer-events: none;
+            z-index: 0;
+        }
+
+        /* ── LAYOUT ──────────────────────────────────────────────── */
+        .app {
+            position: relative;
+            z-index: 1;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 16px;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+
+        /* ── HEADER ──────────────────────────────────────────────── */
+        .header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 14px 20px;
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 14px;
+        }
+        .logo {
+            font-family: var(--display);
+            font-size: 20px;
+            font-weight: 800;
+            letter-spacing: -.5px;
+        }
+        .logo span { color: var(--accent); }
+        .header-meta {
+            display: flex;
+            flex-direction: column;
+            align-items: flex-end;
+            gap: 2px;
+        }
+        .model-badge {
+            font-size: 11px;
+            color: var(--muted);
+        }
+        #model-status {
+            font-size: 11px;
+            color: var(--orange);
+            transition: color .3s;
+        }
+
+        /* ── DEVICE GRID ─────────────────────────────────────────── */
+        .device-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 12px;
+        }
+        @media (max-width: 520px) {
+            .device-grid { grid-template-columns: 1fr; }
+        }
+
+        /* ── DEVICE CARD ─────────────────────────────────────────── */
+        .device-card {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 16px;
+            padding: 18px;
+            display: flex;
+            flex-direction: column;
+            gap: 14px;
+            position: relative;
+            overflow: hidden;
+        }
+        /* Accent glow top edge */
+        .device-card::before {
+            content: '';
+            position: absolute;
+            top: 0; left: 0; right: 0;
+            height: 2px;
+            background: linear-gradient(90deg, transparent, var(--accent), transparent);
+            opacity: .5;
+        }
+        .device-card.left-card::before  { background: linear-gradient(90deg, transparent, #00c2ff, transparent); }
+        .device-card.right-card::before { background: linear-gradient(90deg, transparent, #bf00ff, transparent); }
+
+        .card-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+        }
+        .card-title {
+            font-family: var(--display);
+            font-size: 14px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 1.5px;
+        }
+        .left-card  .card-title { color: #00c2ff; }
+        .right-card .card-title { color: #bf00ff; }
+
+        .conn-status-wrap {
+            display: flex;
+            flex-direction: column;
+            align-items: flex-end;
+            gap: 2px;
+        }
+        .conn-status {
+            font-size: 11px;
+            color: var(--red);
+            transition: color .3s;
+        }
+        .calib-badge {
+            font-size: 10px;
+            color: var(--muted);
+            transition: color .3s;
+        }
+
+        /* ── SEVERITY READOUT ────────────────────────────────────── */
+        .severity-block {
+            display: flex;
+            align-items: flex-end;
+            gap: 10px;
+        }
+        .severity-number {
+            font-family: var(--display);
+            font-size: 42px;
+            font-weight: 800;
+            line-height: 1;
+            color: var(--text);
+            transition: color .3s;
+        }
+        .severity-meta {
+            display: flex;
+            flex-direction: column;
+            gap: 3px;
+            padding-bottom: 4px;
+        }
+        .status-label {
+            font-family: var(--display);
+            font-size: 12px;
+            font-weight: 700;
+            letter-spacing: 2px;
+            color: var(--muted);
+            transition: color .3s;
+        }
+        .peak-label {
+            font-size: 10px;
+            color: var(--muted);
+        }
+        #left-peak, #right-peak { color: var(--text); }
+
+        /* ── PROGRESS BAR ────────────────────────────────────────── */
+        .bar-track {
+            height: 8px;
+            background: var(--border2);
+            border-radius: 4px;
+            overflow: hidden;
+        }
+        .bar-fill {
+            height: 100%;
+            width: 0%;
+            background: var(--green);
+            border-radius: 4px;
+            transition: width .25s ease, background .25s ease;
+        }
+
+        /* ── TELEMETRY ROW ───────────────────────────────────────── */
+        .telemetry {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 8px;
+        }
+        .telem-cell {
+            background: var(--panel);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 8px 10px;
+        }
+        .telem-key {
+            font-size: 9px;
+            text-transform: uppercase;
+            letter-spacing: 1.2px;
+            color: var(--muted);
+            margin-bottom: 4px;
+        }
+        .telem-val {
+            font-size: 14px;
+            font-weight: 500;
+            color: var(--text);
+        }
+
+        /* ── CONNECT BUTTON ──────────────────────────────────────── */
+        .conn-btn {
+            width: 100%;
+            padding: 11px;
+            border: none;
+            border-radius: 10px;
+            font-family: var(--display);
+            font-size: 12px;
+            font-weight: 700;
+            letter-spacing: 1.5px;
+            text-transform: uppercase;
+            cursor: pointer;
+            transition: opacity .2s, transform .1s;
+        }
+        .conn-btn:active { transform: scale(.97); opacity: .8; }
+        .left-card  .conn-btn { background: #00c2ff22; color: #00c2ff; border: 1.5px solid #00c2ff55; }
+        .right-card .conn-btn { background: #bf00ff22; color: #bf00ff; border: 1.5px solid #bf00ff55; }
+        .conn-btn:disabled { opacity: .4; cursor: not-allowed; }
+        .conn-btn:hover:not(:disabled) {
+            background: #00c2ff33;
+        }
+        .right-card .conn-btn:hover:not(:disabled) { background: #bf00ff33; }
+
+        /* ── SECTION CARD ────────────────────────────────────────── */
+        .section-card {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 16px;
+            padding: 20px;
+        }
+        .section-title {
+            font-family: var(--display);
+            font-size: 13px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            color: var(--muted);
+            margin-bottom: 16px;
+            padding-bottom: 10px;
+            border-bottom: 1px solid var(--border);
+        }
+
+        /* ── ASSESSMENT SECTION ──────────────────────────────────── */
+        .assess-row {
+            display: flex;
+            gap: 10px;
+            align-items: stretch;
+            flex-wrap: wrap;
+        }
+        select {
+            flex: 1;
+            min-width: 160px;
+            padding: 11px 14px;
+            background: var(--panel);
+            color: var(--text);
+            border: 1.5px solid var(--border2);
+            border-radius: 10px;
+            font-family: var(--mono);
+            font-size: 12px;
+            appearance: none;
+            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%234a5568' fill='none' stroke-width='2' stroke-linecap='round'/%3E%3C/svg%3E");
+            background-repeat: no-repeat;
+            background-position: right 12px center;
+            padding-right: 32px;
+            cursor: pointer;
+        }
+        select:focus { outline: none; border-color: var(--accent); }
+
+        .action-btn {
+            padding: 11px 22px;
+            border: none;
+            border-radius: 10px;
+            font-family: var(--display);
+            font-size: 12px;
+            font-weight: 700;
+            letter-spacing: 1.5px;
+            text-transform: uppercase;
+            cursor: pointer;
+            transition: opacity .2s, transform .1s;
+            white-space: nowrap;
+        }
+        .action-btn:active { transform: scale(.97); opacity: .85; }
+        .action-btn:disabled { opacity: .4; cursor: not-allowed; }
+
+        .btn-record  { background: var(--accent); color: #000; }
+        .btn-download { background: var(--green); color: #000; }
+
+        .countdown {
+            font-size: 12px;
+            color: var(--orange);
+            margin-top: 10px;
+            min-height: 18px;
+        }
+        #report-section { display: none; }
+        #summary-text {
+            font-size: 12px;
+            color: var(--text);
+            margin-bottom: 12px;
+            padding: 10px 14px;
+            background: var(--panel);
+            border-radius: 8px;
+            border: 1px solid var(--border);
+        }
+
+        /* ── SETTINGS SECTION ────────────────────────────────────── */
+        .settings-grid {
+            display: grid;
+            grid-template-columns: 1fr auto auto;
+            gap: 10px;
+            align-items: center;
+        }
+        .settings-label {
+            font-size: 11px;
+            color: var(--muted);
+            line-height: 1.4;
+        }
+        .settings-label strong { color: var(--text); display: block; }
+        input[type="number"] {
+            width: 80px;
+            padding: 9px 10px;
+            background: var(--panel);
+            color: var(--text);
+            border: 1.5px solid var(--border2);
+            border-radius: 8px;
+            font-family: var(--mono);
+            font-size: 13px;
+            text-align: center;
+        }
+        input[type="number"]:focus { outline: none; border-color: var(--accent); }
+        .apply-btn {
+            padding: 9px 16px;
+            background: var(--panel);
+            color: var(--accent);
+            border: 1.5px solid var(--accent);
+            border-radius: 8px;
+            font-family: var(--display);
+            font-size: 11px;
+            font-weight: 700;
+            letter-spacing: 1px;
+            text-transform: uppercase;
+            cursor: pointer;
+            transition: background .2s;
+        }
+        .apply-btn:hover { background: #00c2ff18; }
+
+        .threshold-display {
+            margin-top: 8px;
+            font-size: 11px;
+            color: var(--muted);
+        }
+        .threshold-display span { color: var(--accent); font-weight: 500; }
+
+        /* ── FOOTER ──────────────────────────────────────────────── */
+        .footer {
+            text-align: center;
+            font-size: 10px;
+            color: var(--muted);
+            padding: 8px 0 16px;
+            letter-spacing: .5px;
+        }
+        .footer a { color: var(--muted); }
+
+        /* ── RECORDING PULSE ─────────────────────────────────────── */
+        @keyframes pulse-ring {
+            0%   { box-shadow: 0 0 0 0 rgba(255,59,48,.4); }
+            70%  { box-shadow: 0 0 0 8px rgba(255,59,48,0); }
+            100% { box-shadow: 0 0 0 0 rgba(255,59,48,0); }
+        }
+        .recording .btn-record {
+            animation: pulse-ring 1s infinite;
+            background: var(--red);
+        }
     </style>
 </head>
 <body>
-    <header style="margin-bottom: 30px;">
-        <h1 style="margin: 0;">TremorPause <span style="color: var(--primary);">AI</span></h1>
-        <p style="color: #8e8e93; margin: 5px 0;">Dual-Hand Stabilization & Clinical Report</p>
+<div class="app">
+
+    <!-- HEADER -->
+    <header class="header">
+        <div class="logo">Tremor<span>Pause</span></div>
+        <div class="header-meta">
+            <span class="model-badge">Random Forest AI</span>
+            <span id="model-status">Initializing…</span>
+        </div>
     </header>
 
-    <div class="grid">
-        <div class="card">
-            <div class="status" id="left-status">Left: Disconnected</div>
-            <div class="severity-val" id="left-sev">0.0%</div>
-            <div class="bar-bg"><div id="left-bar" class="bar-fill"></div></div>
-            <p id="left-meta" style="font-size: 14px; color: #8e8e93;">Hz: -- | Motor: --</p>
-            <button onclick="connectBluetooth('left')">Connect Left Hand</button>
+    <!-- DEVICE CARDS -->
+    <div class="device-grid">
+
+        <!-- LEFT HAND -->
+        <div class="device-card left-card">
+            <div class="card-header">
+                <span class="card-title">Left Hand</span>
+                <div class="conn-status-wrap">
+                    <span id="left-conn-status" class="conn-status">Disconnected</span>
+                    <span id="left-calib-badge" class="calib-badge">Not calibrated</span>
+                </div>
+            </div>
+
+            <div class="severity-block">
+                <div id="left-sev" class="severity-number">--</div>
+                <div class="severity-meta">
+                    <span id="left-label" class="status-label">--</span>
+                    <span class="peak-label">Peak: <span id="left-peak">--</span></span>
+                </div>
+            </div>
+
+            <div class="bar-track">
+                <div id="left-bar" class="bar-fill"></div>
+            </div>
+
+            <div class="telemetry">
+                <div class="telem-cell">
+                    <div class="telem-key">Freq</div>
+                    <div id="left-hz" class="telem-val">--</div>
+                </div>
+                <div class="telem-cell">
+                    <div class="telem-key">Motor</div>
+                    <div id="left-motor" class="telem-val" style="color:var(--muted)">IDLE</div>
+                </div>
+                <div class="telem-cell">
+                    <div class="telem-key">Fs (act)</div>
+                    <div id="left-fs" class="telem-val">--</div>
+                </div>
+            </div>
+
+            <button id="left-conn-btn" class="conn-btn" onclick="connectBluetooth('left')">
+                Connect
+            </button>
         </div>
 
-        <div class="card">
-            <div class="status" id="right-status">Right: Disconnected</div>
-            <div class="severity-val" id="right-sev">0.0%</div>
-            <div class="bar-bg"><div id="right-bar" class="bar-fill"></div></div>
-            <p id="right-meta" style="font-size: 14px; color: #8e8e93;">Hz: -- | Motor: --</p>
-            <button onclick="connectBluetooth('right')">Connect Right Hand</button>
+        <!-- RIGHT HAND -->
+        <div class="device-card right-card">
+            <div class="card-header">
+                <span class="card-title">Right Hand</span>
+                <div class="conn-status-wrap">
+                    <span id="right-conn-status" class="conn-status">Disconnected</span>
+                    <span id="right-calib-badge" class="calib-badge">Not calibrated</span>
+                </div>
+            </div>
+
+            <div class="severity-block">
+                <div id="right-sev" class="severity-number">--</div>
+                <div class="severity-meta">
+                    <span id="right-label" class="status-label">--</span>
+                    <span class="peak-label">Peak: <span id="right-peak">--</span></span>
+                </div>
+            </div>
+
+            <div class="bar-track">
+                <div id="right-bar" class="bar-fill"></div>
+            </div>
+
+            <div class="telemetry">
+                <div class="telem-cell">
+                    <div class="telem-key">Freq</div>
+                    <div id="right-hz" class="telem-val">--</div>
+                </div>
+                <div class="telem-cell">
+                    <div class="telem-key">Motor</div>
+                    <div id="right-motor" class="telem-val" style="color:var(--muted)">IDLE</div>
+                </div>
+                <div class="telem-cell">
+                    <div class="telem-key">Fs (act)</div>
+                    <div id="right-fs" class="telem-val">--</div>
+                </div>
+            </div>
+
+            <button id="right-conn-btn" class="conn-btn" onclick="connectBluetooth('right')">
+                Connect
+            </button>
+        </div>
+
+    </div>
+
+    <!-- CLINICAL ASSESSMENT -->
+    <div class="section-card">
+        <div class="section-title">Clinical Assessment</div>
+
+        <div class="assess-row">
+            <select id="position-select">
+                <option value="Resting">Resting (hand on lap)</option>
+                <option value="Postural">Postural (arms extended)</option>
+                <option value="Kinetic">Kinetic (finger-to-nose)</option>
+                <option value="Intention">Intention (touching target)</option>
+            </select>
+            <button id="record-btn" class="action-btn btn-record" onclick="startAssessment()">
+                Start 10s Recording
+            </button>
+        </div>
+
+        <div id="countdown" class="countdown"></div>
+
+        <div id="report-section">
+            <div id="summary-text"></div>
+            <button class="action-btn btn-download" onclick="downloadReport()">
+                Download CSV Report
+            </button>
         </div>
     </div>
 
-    <div class="card assessment-tray">
-        <h3>Clinical Assessment Mode</h3>
-        <select id="position-select">
-            <option value="Resting">Resting (Hand on lap)</option>
-            <option value="Postural">Postural (Arms extended)</option>
-            <option value="Kinetic">Kinetic (Finger-to-nose)</option>
-            <option value="Intention">Intention (Touching target)</option>
-        </select>
-        <button id="record-btn" class="btn-outline" onclick="toggleAssessment()">Start 10s Recording</button>
-        <div id="report-link" style="margin-top: 15px; display: none;">
-            <button style="background: var(--green);" onclick="downloadReport()">Download CSV Report</button>
+    <!-- SETTINGS -->
+    <div class="section-card">
+        <div class="section-title">Settings — Sigmoid Frequency Gate</div>
+
+        <div class="settings-grid">
+            <div class="settings-label">
+                <strong>Frequency Threshold (f<sub>t</sub>)</strong>
+                Sigmoid center for frequency weighting.<br>
+                Set to your model's characteristic tremor Hz.<br>
+                Python default: calculated from training data.<br>
+                Range: 3–15 Hz typical.
+            </div>
+            <input type="number" id="freq-input" min="0.1" max="20" step="0.1" value="4.0">
+            <button class="apply-btn" onclick="applyFreqThreshold()">Apply</button>
+        </div>
+
+        <div class="threshold-display">
+            Active threshold: <span id="threshold-display">4.0 Hz</span>
         </div>
     </div>
 
-    <script src="app.js"></script>
+    <footer class="footer">
+        TremorPause AI · Open via Bluefy on iOS · Deploy to GitHub Pages
+    </footer>
+
+</div>
+<script src="app.js"></script>
 </body>
 </html>
