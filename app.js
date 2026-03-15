@@ -188,12 +188,15 @@ function handleIMU(event, side) {
 
     const s   = sideState[side];
     const now = Date.now();
+
+    // No scaling needed: Arduino sends gyroscope data in degrees/sec (dps) directly
+    // via IMU.readGyroscope() from Arduino_LSM6DSOX. Training data was collected
+    // with the same sketch, so Python received identical dps values. No conversion required.
     const xyz = [parts[0], parts[1], parts[2]];
 
     s.sampleCount++;
-    // Log first 3 raw samples so user can verify sensor scale
     if (s.sampleCount <= 3) {
-        addDiagLog(side, `Raw[${s.sampleCount}]: [${xyz.map(v=>v.toFixed(4)).join(', ')}]`);
+        addDiagLog(side, `Raw[${s.sampleCount}]: [${parts[0].toFixed(3)}, ${parts[1].toFixed(3)}, ${parts[2].toFixed(3)}] dps`);
     }
 
     // ---- CALIBRATION ----
@@ -221,6 +224,9 @@ function handleIMU(event, side) {
 
         const { featureArray, domFreq, actualFs } = extractFeatures(winXYZ, s.bias, winTime);
         const rawProb    = predictProba(featureArray);
+        // Sigmoid gate — exact match to tremorpredictorv4.py:
+        //   freq_weight = 1 / (1 + exp(-1.0 * (hz - ft)))
+        //   severity_pct = raw_severity * freq_weight * 100
         const freqWeight = sigmoidGate(domFreq, freqThreshold);
         const severity   = rawProb * freqWeight * 100;
 
@@ -425,8 +431,8 @@ function updateDebugPanel(side, fa, rawProb, freqWeight, severity, actualFs) {
         ``,
         `── INFERENCE ────────────────────────────────`,
         `raw_prob    : ${rawProb.toFixed(4)}`,
-        `freq_weight : ${freqWeight.toFixed(4)}  ft=${freqThreshold.toFixed(4)} Hz  ${fwStatus}`,
-        `SEVERITY    : ${severity.toFixed(2)}%`,
+        `freq_weight : ${freqWeight.toFixed(4)}  sigmoid(hz - ft=${freqThreshold.toFixed(2)}Hz)`,
+        `SEVERITY    : ${severity.toFixed(2)}%  = raw_prob x freq_weight x 100`,
         ``,
         `── FOR 90%+ SEVERITY NEED ───────────────────`,
         `energy      : 1098–2071  (currently ${fa[3] >= 1098 ? '✓' : `✗ ${(1098-fa[3]).toFixed(0)} short`})`,

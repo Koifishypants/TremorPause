@@ -207,18 +207,22 @@
     <div class="section-card" style="border-color:#1a3010;">
         <div class="section-title" style="color:#3a6030;">How This Model Works — Verified from Your Training Data</div>
         <div class="info-box">
-            <strong>The model has one critical decision boundary: energy ≤ 622.51</strong>
-            Below this threshold the model outputs ~8.5% regardless of anything else — this explains the persistent 8%.
-            To cross into the tremor branch, your window needs <code>energy = sum(mag²) &gt; 622.51</code>.
-            With typical tremor (mean_mag ≈ 2.5), energy ≈ 800 per 128-sample window — just above the boundary.
-            Mild tremor (mean_mag ≈ 2.2) falls below it.<br><br>
+            <strong>Arduino sends gyroscope data in degrees/sec (dps)</strong>
+            Confirmed from <code>sketch_jan11a.ino</code>: <code>IMU.readGyroscope()</code> via
+            <code>Arduino_LSM6DSOX</code> outputs directly in dps. Training data was collected
+            with the exact same sketch, so no unit conversion is needed — values are identical
+            to what Python received.<br><br>
 
-            <strong>95–99% severity occurs only during the "Point" task</strong>
-            Verified from your CSVs: only 11 windows across all 1639 training samples exceed 90%.
-            All 11 come from <code>data_01-22-Male-Point_TREMOR</code> (arm extended, finger-to-nose).
-            They share: <code>energy 1098–2071, dom_freq 17–21 Hz, vib_rate 58–71</code>.<br><br>
+            <strong>Severity formula (identical to tremorpredictorv4.py):</strong><br>
+            <code>freq_weight = 1 / (1 + exp(-1.0 × (hz − ft)))</code><br>
+            <code>severity = raw_prob × freq_weight × 100</code><br>
+            <code>ft = 9.32 Hz</code> from your full 240-file dataset.<br><br>
 
-            <strong>ft = 9.32 Hz</strong> — confirmed from your full 240-file dataset via <code>get_optimal_hz_via_j_index()</code>.
+            <strong>Why live energy is low (5–20) vs training median (787):</strong>
+            Training patients (ages 72–75, diagnosed tremor) had gyro oscillations of ~2–5 dps.
+            A mild voluntary tremor produces only ~0.2–0.4 dps — about 10× weaker.
+            To cross the model's root split (energy &gt; 622), you need ~2.2 dps mean gyro magnitude.
+            This is a training data coverage issue: the model needs more low-amplitude tremor examples.
         </div>
     </div>
 
