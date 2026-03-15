@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>TremorPause Web</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <style>
+        body { font-family: -apple-system, sans-serif; background: #121212; color: white; padding: 20px; text-align: center; }
+        .card { background: #1e1e1e; border-radius: 15px; padding: 20px; margin-bottom: 20px; border: 1px solid #333; }
+        .severity-bar { height: 20px; background: #333; border-radius: 10px; overflow: hidden; margin: 10px 0; }
+        .fill { height: 100%; width: 0%; transition: width 0.2s, background 0.2s; }
+        button { background: #007aff; color: white; border: none; padding: 15px 30px; border-radius: 10px; font-size: 16px; margin: 5px; }
+        .btn-red { background: #ff3b30; }
+        .report-modal { display:none; position: fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.9); overflow-y: scroll; padding: 20px; box-sizing: border-box; }
+    </style>
+</head>
+<body>
+    <h1>TremorPause</h1>
+
+    <div class="card">
+        <h3>Left Hand (Main)</h3>
+        <button onclick="connect('left')">Connect Left</button>
+        <div class="severity-bar"><div id="left-fill" class="fill"></div></div>
+        <p id="left-status">Disconnected</p>
+    </div>
+
+    <div class="card">
+        <h3>Right Hand (TREMOR-PRO-X1)</h3>
+        <button onclick="connect('right')">Connect Right</button>
+        <div class="severity-bar"><div id="right-fill" class="fill"></div></div>
+        <p id="right-status">Disconnected</p>
+    </div>
+
+    <div class="card">
+        <h3>Clinical Assessment</h3>
+        <p>Motors: <span style="color:#ff3b30">INACTIVE</span></p>
+        <select id="position-select" style="padding:10px; width:100%; border-radius:5px;">
+            <option>Resting</option><option>Postural</option>
+            <option>Kinetic</option><option>Intention</option>
+        </select><br><br>
+        <button id="record-btn" onclick="toggleAssessment()">Start Recording</button>
+        <button onclick="generateReport()">View Report</button>
+    </div>
+
+    <div id="report-modal" class="report-modal">
+        <h2>Session Report</h2>
+        <div id="report-content"></div>
+        <button onclick="document.getElementById('report-modal').style.display='none'">Close</button>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>
