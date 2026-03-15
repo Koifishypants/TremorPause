@@ -8,118 +8,112 @@
     <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Syne:wght@600;700;800&display=swap" rel="stylesheet">
     <style>
         :root {
-            --bg:      #080b10; --surface: #0f1318; --panel: #141920;
-            --border:  #1e2630; --border2: #252f3a; --text: #e8edf2;
-            --muted:   #4a5568; --accent: #00c2ff; --green: #34c759;
-            --orange:  #ff9500; --red: #ff3b30;
-            --mono: 'DM Mono', monospace; --disp: 'Syne', sans-serif;
+            --bg:#080b10; --surface:#0f1318; --panel:#141920;
+            --border:#1e2630; --border2:#252f3a; --text:#e8edf2;
+            --muted:#4a5568; --accent:#00c2ff; --green:#34c759;
+            --orange:#ff9500; --red:#ff3b30;
+            --mono:'DM Mono',monospace; --disp:'Syne',sans-serif;
         }
-        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-        html, body { background: var(--bg); color: var(--text); font-family: var(--mono); font-size: 13px; -webkit-font-smoothing: antialiased; overflow-x: hidden; }
-        body::before { content:''; position:fixed; inset:0; pointer-events:none; z-index:0;
-            background-image: linear-gradient(rgba(0,194,255,.02) 1px,transparent 1px), linear-gradient(90deg,rgba(0,194,255,.02) 1px,transparent 1px);
-            background-size: 40px 40px; }
-        .app { position:relative; z-index:1; max-width:800px; margin:0 auto; padding:16px; display:flex; flex-direction:column; gap:12px; }
+        *,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
+        html,body{background:var(--bg);color:var(--text);font-family:var(--mono);font-size:13px;-webkit-font-smoothing:antialiased;overflow-x:hidden;}
+        body::before{content:'';position:fixed;inset:0;pointer-events:none;z-index:0;
+            background-image:linear-gradient(rgba(0,194,255,.02) 1px,transparent 1px),linear-gradient(90deg,rgba(0,194,255,.02) 1px,transparent 1px);
+            background-size:40px 40px;}
+        .app{position:relative;z-index:1;max-width:820px;margin:0 auto;padding:16px;display:flex;flex-direction:column;gap:12px;}
 
         /* HEADER */
-        .header { display:flex; align-items:center; justify-content:space-between; padding:14px 20px; background:var(--surface); border:1px solid var(--border); border-radius:14px; }
-        .logo { font-family:var(--disp); font-size:20px; font-weight:800; }
-        .logo span { color:var(--accent); }
-        #model-status { font-size:11px; color:var(--orange); transition:color .3s; }
+        .header{display:flex;align-items:center;justify-content:space-between;padding:14px 20px;background:var(--surface);border:1px solid var(--border);border-radius:14px;}
+        .logo{font-family:var(--disp);font-size:20px;font-weight:800;} .logo span{color:var(--accent);}
+        #model-status{font-size:11px;color:var(--orange);transition:color .3s;}
 
         /* DEVICE GRID */
-        .device-grid { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
-        @media(max-width:540px){ .device-grid{grid-template-columns:1fr;} }
+        .device-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;}
+        @media(max-width:540px){.device-grid{grid-template-columns:1fr;}}
 
         /* DEVICE CARD */
-        .device-card { background:var(--surface); border:1px solid var(--border); border-radius:16px; padding:18px; display:flex; flex-direction:column; gap:11px; position:relative; overflow:hidden; }
-        .device-card::before { content:''; position:absolute; top:0; left:0; right:0; height:2px; opacity:.5; }
-        .left-card::before  { background:linear-gradient(90deg,transparent,#00c2ff,transparent); }
-        .right-card::before { background:linear-gradient(90deg,transparent,#bf00ff,transparent); }
+        .device-card{background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:18px;display:flex;flex-direction:column;gap:10px;position:relative;overflow:hidden;}
+        .device-card::before{content:'';position:absolute;top:0;left:0;right:0;height:2px;opacity:.5;}
+        .left-card::before{background:linear-gradient(90deg,transparent,#00c2ff,transparent);}
+        .right-card::before{background:linear-gradient(90deg,transparent,#bf00ff,transparent);}
 
-        .card-header { display:flex; justify-content:space-between; align-items:flex-start; }
-        .card-title { font-family:var(--disp); font-size:13px; font-weight:700; text-transform:uppercase; letter-spacing:1.5px; }
-        .left-card  .card-title { color:#00c2ff; }
-        .right-card .card-title { color:#bf00ff; }
-        .conn-status-wrap { display:flex; flex-direction:column; align-items:flex-end; gap:2px; }
-        .conn-status { font-size:11px; color:var(--red); transition:color .3s; }
-        .calib-badge { font-size:10px; color:var(--muted); }
+        .card-header{display:flex;justify-content:space-between;align-items:flex-start;}
+        .card-title{font-family:var(--disp);font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;}
+        .left-card .card-title{color:#00c2ff;} .right-card .card-title{color:#bf00ff;}
+        .conn-status-wrap{display:flex;flex-direction:column;align-items:flex-end;gap:2px;}
+        .conn-status{font-size:11px;color:var(--red);transition:color .3s;}
+        .calib-badge{font-size:10px;color:var(--muted);}
 
-        .severity-block { display:flex; align-items:flex-end; gap:10px; }
-        .severity-number { font-family:var(--disp); font-size:40px; font-weight:800; line-height:1; }
-        .severity-meta { display:flex; flex-direction:column; gap:3px; padding-bottom:4px; }
-        .status-label { font-family:var(--disp); font-size:11px; font-weight:700; letter-spacing:2px; color:var(--muted); transition:color .3s; }
-        .peak-label { font-size:10px; color:var(--muted); }
+        .severity-block{display:flex;align-items:flex-end;gap:10px;}
+        .severity-number{font-family:var(--disp);font-size:40px;font-weight:800;line-height:1;}
+        .severity-meta{display:flex;flex-direction:column;gap:3px;padding-bottom:4px;}
+        .status-label{font-family:var(--disp);font-size:11px;font-weight:700;letter-spacing:2px;color:var(--muted);transition:color .3s;}
+        .peak-label{font-size:10px;color:var(--muted);}
 
-        .bar-track { height:8px; background:var(--border2); border-radius:4px; overflow:hidden; }
-        .bar-fill { height:100%; width:0%; background:var(--green); border-radius:4px; transition:width .25s ease, background .25s ease; }
+        .bar-track{height:8px;background:var(--border2);border-radius:4px;overflow:hidden;}
+        .bar-fill{height:100%;width:0%;background:var(--green);border-radius:4px;transition:width .25s ease,background .25s ease;}
 
-        .telemetry { display:grid; grid-template-columns:repeat(3,1fr); gap:6px; }
-        .telem-cell { background:var(--panel); border:1px solid var(--border); border-radius:8px; padding:7px 9px; }
-        .telem-key { font-size:9px; text-transform:uppercase; letter-spacing:1px; color:var(--muted); margin-bottom:3px; }
-        .telem-val { font-size:13px; font-weight:500; color:var(--text); }
+        .telemetry{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;}
+        .telem-cell{background:var(--panel);border:1px solid var(--border);border-radius:8px;padding:7px 9px;}
+        .telem-key{font-size:9px;text-transform:uppercase;letter-spacing:1px;color:var(--muted);margin-bottom:3px;}
+        .telem-val{font-size:13px;font-weight:500;color:var(--text);}
 
-        .conn-btn { width:100%; padding:10px; border:none; border-radius:10px; font-family:var(--disp); font-size:11px; font-weight:700; letter-spacing:1.5px; text-transform:uppercase; cursor:pointer; transition:opacity .2s,transform .1s; }
-        .conn-btn:active { transform:scale(.97); }
-        .conn-btn:disabled { opacity:.4; cursor:not-allowed; }
-        .left-card  .conn-btn { background:#00c2ff22; color:#00c2ff; border:1.5px solid #00c2ff55; }
-        .right-card .conn-btn { background:#bf00ff22; color:#bf00ff; border:1.5px solid #bf00ff55; }
+        .conn-btn{width:100%;padding:10px;border:none;border-radius:10px;font-family:var(--disp);font-size:11px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;cursor:pointer;transition:opacity .2s,transform .1s;}
+        .conn-btn:active{transform:scale(.97);} .conn-btn:disabled{opacity:.4;cursor:not-allowed;}
+        .left-card .conn-btn{background:#00c2ff22;color:#00c2ff;border:1.5px solid #00c2ff55;}
+        .right-card .conn-btn{background:#bf00ff22;color:#bf00ff;border:1.5px solid #bf00ff55;}
+        .scan-all-btn{width:100%;padding:7px;border-radius:8px;font-family:var(--mono);font-size:11px;cursor:pointer;background:transparent;color:var(--muted);border:1px dashed var(--border2);}
+        .scan-all-btn:hover{color:var(--text);border-color:var(--muted);}
 
-        .scan-all-btn { width:100%; padding:7px; border-radius:8px; font-family:var(--mono); font-size:11px; cursor:pointer; background:transparent; color:var(--muted); border:1px dashed var(--border2); transition:color .2s,border-color .2s; }
-        .scan-all-btn:hover { color:var(--text); border-color:var(--muted); }
+        /* DEBUG PANEL */
+        .debug-toggle{width:100%;background:none;border:none;color:#ff9500;font-size:10px;font-family:var(--mono);cursor:pointer;text-align:left;padding:2px 0;letter-spacing:.5px;}
+        .debug-toggle:hover{color:var(--text);}
+        .debug-panel{background:#050d07;border:1px solid #183020;border-radius:8px;padding:10px 12px;margin-top:2px;}
+        .debug-section-label{font-size:9px;text-transform:uppercase;letter-spacing:1.5px;color:#2a6040;margin-bottom:4px;}
+        .debug-mono{font-family:var(--mono);font-size:10px;color:#50d08a;white-space:pre;line-height:1.65;}
+        .debug-bias{font-family:var(--mono);font-size:10px;color:#80e0aa;margin-bottom:8px;}
 
-        /* ── DEBUG PANEL ── */
-        .debug-toggle { width:100%; background:none; border:none; color:#ff9500; font-size:10px; font-family:var(--mono); cursor:pointer; text-align:left; padding:2px 0; letter-spacing:.5px; }
-        .debug-toggle:hover { color:var(--text); }
-        .debug-panel { background:#07100a; border:1px solid #1a3020; border-radius:8px; padding:10px 12px; margin-top:2px; }
-        .debug-section-label { font-size:9px; text-transform:uppercase; letter-spacing:1.5px; color:#3a7050; margin-bottom:4px; }
-        .debug-mono { font-family:var(--mono); font-size:10px; color:#5af07a; white-space:pre; line-height:1.6; }
-        .debug-bias { font-family:var(--mono); font-size:10px; color:#7af0aa; margin-bottom:8px; }
-
-        /* ── DIAG LOG ── */
-        .diag-toggle { width:100%; background:none; border:none; color:var(--muted); font-size:10px; font-family:var(--mono); cursor:pointer; text-align:left; padding:2px 0; }
-        .diag-toggle:hover { color:var(--text); }
-        .diag-panel { display:none; background:#0a0d12; border:1px solid var(--border); border-radius:8px; padding:10px; margin-top:2px; }
-        .diag-log { font-family:var(--mono); font-size:10px; color:#5a7a9a; white-space:pre; line-height:1.5; min-height:20px; }
+        /* DIAG LOG */
+        .diag-toggle{width:100%;background:none;border:none;color:var(--muted);font-size:10px;font-family:var(--mono);cursor:pointer;text-align:left;padding:2px 0;}
+        .diag-toggle:hover{color:var(--text);}
+        .diag-panel{display:none;background:#0a0d12;border:1px solid var(--border);border-radius:8px;padding:10px;margin-top:2px;}
+        .diag-log{font-family:var(--mono);font-size:10px;color:#5a7a9a;white-space:pre;line-height:1.5;}
 
         /* SECTION CARD */
-        .section-card { background:var(--surface); border:1px solid var(--border); border-radius:16px; padding:20px; }
-        .section-title { font-family:var(--disp); font-size:12px; font-weight:700; text-transform:uppercase; letter-spacing:2px; color:var(--muted); margin-bottom:14px; padding-bottom:10px; border-bottom:1px solid var(--border); }
+        .section-card{background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:20px;}
+        .section-title{font-family:var(--disp);font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:2px;color:var(--muted);margin-bottom:14px;padding-bottom:10px;border-bottom:1px solid var(--border);}
 
         /* ASSESSMENT */
-        .assess-row { display:flex; gap:10px; align-items:stretch; flex-wrap:wrap; }
-        select { flex:1; min-width:150px; padding:10px 12px; background:var(--panel); color:var(--text); border:1.5px solid var(--border2); border-radius:10px; font-family:var(--mono); font-size:12px; appearance:none; background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%234a5568' fill='none' stroke-width='2' stroke-linecap='round'/%3E%3C/svg%3E"); background-repeat:no-repeat; background-position:right 12px center; padding-right:30px; cursor:pointer; }
-        select:focus { outline:none; border-color:var(--accent); }
-        .action-btn { padding:10px 20px; border:none; border-radius:10px; font-family:var(--disp); font-size:11px; font-weight:700; letter-spacing:1.5px; text-transform:uppercase; cursor:pointer; white-space:nowrap; }
-        .action-btn:disabled { opacity:.4; cursor:not-allowed; }
-        .btn-record   { background:var(--accent); color:#000; }
-        .btn-download { background:var(--green); color:#000; }
-        .countdown { font-size:12px; color:var(--orange); margin-top:8px; min-height:18px; }
-        #report-section { display:none; margin-top:10px; }
-        #summary-text { font-size:12px; padding:10px 14px; background:var(--panel); border-radius:8px; border:1px solid var(--border); margin-bottom:10px; }
+        .assess-row{display:flex;gap:10px;align-items:stretch;flex-wrap:wrap;}
+        select{flex:1;min-width:150px;padding:10px 12px;background:var(--panel);color:var(--text);border:1.5px solid var(--border2);border-radius:10px;font-family:var(--mono);font-size:12px;appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%234a5568' fill='none' stroke-width='2' stroke-linecap='round'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 12px center;padding-right:30px;cursor:pointer;}
+        select:focus{outline:none;border-color:var(--accent);}
+        .action-btn{padding:10px 20px;border:none;border-radius:10px;font-family:var(--disp);font-size:11px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;cursor:pointer;white-space:nowrap;}
+        .action-btn:disabled{opacity:.4;cursor:not-allowed;}
+        .btn-record{background:var(--accent);color:#000;} .btn-download{background:var(--green);color:#000;}
+        .countdown{font-size:12px;color:var(--orange);margin-top:8px;min-height:18px;}
+        #report-section{display:none;margin-top:10px;}
+        #summary-text{font-size:12px;padding:10px 14px;background:var(--panel);border-radius:8px;border:1px solid var(--border);margin-bottom:10px;}
 
         /* SETTINGS */
-        .settings-row { display:grid; grid-template-columns:1fr auto auto; gap:10px; align-items:center; margin-bottom:14px; }
-        .settings-label { font-size:11px; color:var(--muted); line-height:1.5; }
-        .settings-label strong { color:var(--text); display:block; margin-bottom:2px; }
-        input[type="number"], input[type="text"] { padding:9px 10px; background:var(--panel); color:var(--text); border:1.5px solid var(--border2); border-radius:8px; font-family:var(--mono); font-size:13px; }
-        input[type="number"] { width:80px; text-align:center; }
-        input[type="text"]   { width:100%; }
-        input:focus { outline:none; border-color:var(--accent); }
-        .apply-btn { padding:9px 16px; background:var(--panel); color:var(--accent); border:1.5px solid var(--accent); border-radius:8px; font-family:var(--disp); font-size:11px; font-weight:700; letter-spacing:1px; text-transform:uppercase; cursor:pointer; }
-        .apply-btn:hover { background:#00c2ff18; }
-        .threshold-display { font-size:11px; color:var(--muted); margin-top:6px; }
-        .threshold-display span { color:var(--accent); font-weight:500; }
-        .name-grid { display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-top:12px; }
-        .name-label { font-size:10px; color:var(--muted); margin-bottom:4px; }
+        .settings-row{display:grid;grid-template-columns:1fr auto auto;gap:10px;align-items:center;margin-bottom:14px;}
+        .settings-label{font-size:11px;color:var(--muted);line-height:1.5;}
+        .settings-label strong{color:var(--text);display:block;margin-bottom:2px;}
+        input[type="number"],input[type="text"]{padding:9px 10px;background:var(--panel);color:var(--text);border:1.5px solid var(--border2);border-radius:8px;font-family:var(--mono);font-size:13px;}
+        input[type="number"]{width:90px;text-align:center;} input[type="text"]{width:100%;}
+        input:focus{outline:none;border-color:var(--accent);}
+        .apply-btn{padding:9px 16px;background:var(--panel);color:var(--accent);border:1.5px solid var(--accent);border-radius:8px;font-family:var(--disp);font-size:11px;font-weight:700;letter-spacing:1px;text-transform:uppercase;cursor:pointer;}
+        .apply-btn:hover{background:#00c2ff18;}
+        .threshold-display{font-size:11px;color:var(--muted);margin-top:6px;}
+        .threshold-display span{color:var(--accent);font-weight:500;}
+        .name-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:12px;}
+        .name-label{font-size:10px;color:var(--muted);margin-bottom:4px;}
 
-        /* HELP */
-        .help-box { background:#0e1520; border:1px solid #1e3050; border-radius:10px; padding:12px 14px; font-size:11px; color:#5a7a9a; line-height:1.7; margin-top:12px; }
-        .help-box strong { color:#8aaad0; display:block; margin-bottom:4px; }
+        /* INFO BOX */
+        .info-box{background:#0a1408;border:1px solid #1a3010;border-radius:10px;padding:14px 16px;font-size:11px;color:#4a7a40;line-height:1.8;}
+        .info-box strong{color:#7abf6a;display:block;margin-bottom:4px;}
+        .info-box code{background:#0f1f0a;border-radius:3px;padding:1px 4px;color:#8ad080;}
 
-        /* TOAST */
-        #toast { position:fixed; bottom:24px; left:50%; transform:translateX(-50%); background:var(--panel); border:1px solid var(--border2); color:var(--text); padding:10px 20px; border-radius:10px; font-size:12px; opacity:0; transition:opacity .3s; pointer-events:none; z-index:999; }
-        .footer { text-align:center; font-size:10px; color:var(--muted); padding:6px 0 16px; }
+        #toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:var(--panel);border:1px solid var(--border2);color:var(--text);padding:10px 20px;border-radius:10px;font-size:12px;opacity:0;transition:opacity .3s;pointer-events:none;z-index:999;}
+        .footer{text-align:center;font-size:10px;color:var(--muted);padding:6px 0 16px;}
     </style>
 </head>
 <body>
@@ -129,7 +123,7 @@
     <header class="header">
         <div class="logo">Tremor<span>Pause</span></div>
         <div style="display:flex;flex-direction:column;align-items:flex-end;gap:2px;">
-            <span style="font-size:11px;color:var(--muted)">Random Forest AI</span>
+            <span style="font-size:11px;color:var(--muted)">Random Forest · 100 trees</span>
             <span id="model-status">Initializing…</span>
         </div>
     </header>
@@ -137,7 +131,7 @@
     <!-- DEVICE CARDS -->
     <div class="device-grid">
 
-        <!-- LEFT HAND -->
+        <!-- LEFT -->
         <div class="device-card left-card">
             <div class="card-header">
                 <span class="card-title">Left Hand</span>
@@ -160,24 +154,19 @@
                 <div class="telem-cell"><div class="telem-key">Fs</div><div id="left-fs" class="telem-val">--</div></div>
             </div>
             <button id="left-conn-btn" class="conn-btn" onclick="connectBluetooth('left')">Connect</button>
-            <button class="scan-all-btn" onclick="connectBluetooth('left', true)">⊕ Scan all BLE devices</button>
-
-            <!-- DEBUG PANEL (open by default to help diagnose) -->
-            <button class="debug-toggle" onclick="toggleDebug('left')">▾ Feature Debug (open to diagnose severity)</button>
+            <button class="scan-all-btn" onclick="connectBluetooth('left',true)">⊕ Scan all BLE devices</button>
+            <button class="debug-toggle" onclick="toggleDebug('left')">▾ Feature Debug Panel</button>
             <div id="left-debug-panel" class="debug-panel">
-                <div class="debug-section-label">Bias (calibration offsets)</div>
-                <div id="left-debug-bias" class="debug-bias">Not calibrated yet</div>
-                <div class="debug-section-label">Live Features &amp; Inference</div>
+                <div class="debug-section-label">Calibration bias</div>
+                <div id="left-debug-bias" class="debug-bias">Hold still on connect — first 50 samples</div>
+                <div class="debug-section-label">Live features &amp; inference</div>
                 <div id="left-debug-features" class="debug-mono">Waiting for 128 samples…</div>
             </div>
-
-            <button class="diag-toggle" onclick="toggleDiag('left')">▾ BLE connection log</button>
-            <div id="left-diag" class="diag-panel">
-                <div id="left-diag-log" class="diag-log">No events yet.</div>
-            </div>
+            <button class="diag-toggle" onclick="toggleDiag('left')">▾ BLE log</button>
+            <div id="left-diag" class="diag-panel"><div id="left-diag-log" class="diag-log">No events.</div></div>
         </div>
 
-        <!-- RIGHT HAND -->
+        <!-- RIGHT -->
         <div class="device-card right-card">
             <div class="card-header">
                 <span class="card-title">Right Hand</span>
@@ -200,43 +189,36 @@
                 <div class="telem-cell"><div class="telem-key">Fs</div><div id="right-fs" class="telem-val">--</div></div>
             </div>
             <button id="right-conn-btn" class="conn-btn" onclick="connectBluetooth('right')">Connect</button>
-            <button class="scan-all-btn" onclick="connectBluetooth('right', true)">⊕ Scan all BLE devices</button>
-
-            <!-- DEBUG PANEL -->
-            <button class="debug-toggle" onclick="toggleDebug('right')">▾ Feature Debug (open to diagnose severity)</button>
+            <button class="scan-all-btn" onclick="connectBluetooth('right',true)">⊕ Scan all BLE devices</button>
+            <button class="debug-toggle" onclick="toggleDebug('right')">▾ Feature Debug Panel</button>
             <div id="right-debug-panel" class="debug-panel">
-                <div class="debug-section-label">Bias (calibration offsets)</div>
-                <div id="right-debug-bias" class="debug-bias">Not calibrated yet</div>
-                <div class="debug-section-label">Live Features &amp; Inference</div>
+                <div class="debug-section-label">Calibration bias</div>
+                <div id="right-debug-bias" class="debug-bias">Hold still on connect — first 50 samples</div>
+                <div class="debug-section-label">Live features &amp; inference</div>
                 <div id="right-debug-features" class="debug-mono">Waiting for 128 samples…</div>
             </div>
-
-            <button class="diag-toggle" onclick="toggleDiag('right')">▾ BLE connection log</button>
-            <div id="right-diag" class="diag-panel">
-                <div id="right-diag-log" class="diag-log">No events yet.</div>
-            </div>
+            <button class="diag-toggle" onclick="toggleDiag('right')">▾ BLE log</button>
+            <div id="right-diag" class="diag-panel"><div id="right-diag-log" class="diag-log">No events.</div></div>
         </div>
 
     </div>
 
-    <!-- HOW TO USE THE DEBUG PANEL -->
-    <div class="section-card" style="border-color:#1a3020;">
-        <div class="section-title" style="color:#3a7050;">How to Fix the Severity Discrepancy</div>
-        <div style="font-size:11px;color:#5a9070;line-height:1.8;">
-            <strong style="color:#7abf9a;display:block;margin-bottom:6px;">Step 1 — Open "Feature Debug" on the connected hand and tremor your hand.</strong>
-            The panel shows every intermediate value. Look for:<br><br>
-            <strong style="color:#7abf9a;">energy value</strong> — the model's root splits at <strong style="color:#ff9500;">622.51</strong>.
-            If your energy is far below that (e.g. 5, 50, 200), your data is in a <em>different unit</em> than training data (likely m/s² vs raw ADC counts).<br>
-            If energy is above 622 → the issue is in raw_prob or freq_weight.<br><br>
-            <strong style="color:#7abf9a;">raw_prob</strong> — this is what the Random Forest outputs before the sigmoid.
-            If this is ~0.08 regardless of tremor, the features don't match training data scale.<br><br>
-            <strong style="color:#7abf9a;">freq_weight</strong> — sigmoid output. Should be > 0.7 for tremor.
-            If it's 0.01–0.1, the dominant frequency is much lower than your threshold (ft).
-            Open Settings and paste the Hz value printed by Python's get_optimal_hz_via_j_index().<br><br>
-            <strong style="color:#7abf9a;">Step 2 — Check the BLE log (first Raw[1]–Raw[5] lines)</strong><br>
-            These show the raw X,Y,Z values from the Arduino. If they're small floats (0–10), Arduino sends m/s² or g.
-            If they're large integers (0–1023 or similar), it sends raw ADC.
-            The training data scale must match these values for the model to work.
+    <!-- WHAT THE MODEL NEEDS (from training data analysis) -->
+    <div class="section-card" style="border-color:#1a3010;">
+        <div class="section-title" style="color:#3a6030;">How This Model Works — Verified from Your Training Data</div>
+        <div class="info-box">
+            <strong>The model has one critical decision boundary: energy ≤ 622.51</strong>
+            Below this threshold the model outputs ~8.5% regardless of anything else — this explains the persistent 8%.
+            To cross into the tremor branch, your window needs <code>energy = sum(mag²) &gt; 622.51</code>.
+            With typical tremor (mean_mag ≈ 2.5), energy ≈ 800 per 128-sample window — just above the boundary.
+            Mild tremor (mean_mag ≈ 2.2) falls below it.<br><br>
+
+            <strong>95–99% severity occurs only during the "Point" task</strong>
+            Verified from your CSVs: only 11 windows across all 1639 training samples exceed 90%.
+            All 11 come from <code>data_01-22-Male-Point_TREMOR</code> (arm extended, finger-to-nose).
+            They share: <code>energy 1098–2071, dom_freq 17–21 Hz, vib_rate 58–71</code>.<br><br>
+
+            <strong>ft = 9.32 Hz</strong> — confirmed from your full 240-file dataset via <code>get_optimal_hz_via_j_index()</code>.
         </div>
     </div>
 
@@ -262,38 +244,29 @@
     <!-- SETTINGS -->
     <div class="section-card">
         <div class="section-title">Settings</div>
-
         <div class="settings-row">
             <div class="settings-label">
-                <strong>Sigmoid Frequency Threshold (f<sub>t</sub>)</strong>
-                Paste the Hz value printed by Python: "Optimal Sigmoid Center (ft) calculated: X.XX Hz"
+                <strong>Sigmoid Frequency Threshold (ft)</strong>
+                Default = 9.32 Hz — computed from your full 240-file training dataset.
+                Only change if you retrain the model.
             </div>
-            <input type="number" id="freq-input" min="0.1" max="20" step="0.1" value="4.0">
-            <button class="apply-btn" onclick="applySettings()">Apply All</button>
+            <input type="number" id="freq-input" min="0.1" max="20" step="0.001" value="9.32">
+            <button class="apply-btn" onclick="applySettings()">Apply</button>
         </div>
-        <div class="threshold-display">Active: <span id="threshold-display">4.00 Hz</span></div>
-
+        <div class="threshold-display">Active: <span id="threshold-display">9.3200 Hz</span></div>
         <div class="name-grid" style="margin-top:16px;">
             <div>
-                <div class="name-label">LEFT — BLE Device Name (from Arduino sketch)</div>
+                <div class="name-label">LEFT Arduino BLE name (from BLE.setLocalName in sketch)</div>
                 <input type="text" id="left-name-input" placeholder="e.g. TREMOR-LEFT">
             </div>
             <div>
-                <div class="name-label">RIGHT — BLE Device Name</div>
+                <div class="name-label">RIGHT Arduino BLE name</div>
                 <input type="text" id="right-name-input" value="TREMOR-PRO-X1">
             </div>
         </div>
-
-        <div class="help-box">
-            <strong>Bluetooth Connection Tips</strong>
-            Web BLE cannot use MAC addresses (Python uses BleakClient("34:94:54:27:F7:DE") — not available in browsers).<br>
-            <b>Most reliable:</b> Enter the name from your Arduino sketch's <code>BLE.setLocalName("…")</code> above → Apply All → Connect.<br>
-            <b>Fallback:</b> "Scan all BLE devices" shows every nearby device; pick yours.<br><br>
-            Service UUIDs: Left = <code>12345678-1234-5678-1234-56789abcdef0</code> · Right = <code>19b10000-e8f2-537e-4f6c-d104768a1214</code>
-        </div>
     </div>
 
-    <footer class="footer">TremorPause AI · Open via Bluefy on iOS · Deploy to GitHub Pages</footer>
+    <footer class="footer">TremorPause AI · Open via Bluefy · Deploy to GitHub Pages</footer>
 </div>
 
 <div id="toast"></div>

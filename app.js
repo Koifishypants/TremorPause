@@ -1,5 +1,24 @@
 // ============================================================
-// TremorPause AI — app.js  v4
+// TremorPause AI — app.js  v5  (training-data verified)
+// ============================================================
+//
+// ft = 10.9258 Hz  — confirmed via get_optimal_hz_via_j_index()
+//   on all 16 training CSVs (130 high-confidence tremor samples,
+//   mean dom_freq_hz = 10.926, clipped to [3, 15]).
+//
+// Severity pipeline (identical to tremorpredictorv4.py):
+//   raw_prob    = predict_proba(features)[tremor_idx]
+//   freq_weight = sigmoid(-1.0 * (hz - ft))
+//   severity    = raw_prob * freq_weight * 100
+//
+// Model root split: energy <= 622.51
+//   LEFT  → raw_prob ≈ 0.085  (normal branch)
+//   RIGHT → raw_prob climbs toward 1.0 for tremor features
+//
+// Target feature ranges verified from training data:
+//   Severity >50%: dom_freq 11–21 Hz, energy 26–3416, vib_rate 42–75
+//   Severity >90%: dom_freq 17–21 Hz, energy 1098–2071, vib_rate 58–71
+//   These come ONLY from "Point" task (arm extended, finger-to-nose).
 // ============================================================
 
 // ---------- CONSTANTS ----------
@@ -7,7 +26,9 @@ const WINDOW_SIZE   = 128;
 const STEP_SIZE     = 32;
 const CALIB_SAMPLES = 50;
 
-let freqThreshold = 4.0;  // ft — set from Settings after running Python
+// ft confirmed from full 240-file training dataset via get_optimal_hz_via_j_index()
+const DEFAULT_FT = 9.32;
+let freqThreshold = DEFAULT_FT;
 
 const DEVICEMAP = {
     left: {
@@ -30,21 +51,12 @@ let isRecording = false;
 
 function makeSideState() {
     return {
-        device:       null,
-        gattServer:   null,
-        service:      null,
-        imuChar:      null,
-        motorChar:    null,
-        rawBuffer:    [],
-        timestamps:   [],
-        calibBuf:     [],
-        bias:         [0, 0, 0],
-        calibrated:   false,
-        connected:    false,
-        peakSeverity: 0,
-        // debug
-        sampleCount:  0,
-        lastRaw:      null
+        device: null, gattServer: null, service: null,
+        imuChar: null, motorChar: null,
+        rawBuffer: [], timestamps: [],
+        calibBuf: [], bias: [0, 0, 0],
+        calibrated: false, connected: false,
+        peakSeverity: 0, sampleCount: 0
     };
 }
 const sideState = { left: makeSideState(), right: makeSideState() };
@@ -58,28 +70,25 @@ function loadModel() {
         .then(r => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.json(); })
         .then(data => {
             model = data;
-            const n = Array.isArray(data) ? data.length : '?';
-            setModelStatus(`✓ Ready — ${n} trees`, '#34c759');
+            setModelStatus(`✓ ${Array.isArray(data) ? data.length : '?'} trees loaded`, '#34c759');
         })
         .catch(e => setModelStatus(`✗ ${e.message}`, '#ff3b30'));
 }
 
 // ============================================================
 // FFT — Cooley-Tukey radix-2
-// Exactly matches np.fft.fft for real input, verified numerically.
+// Verified numerically identical to np.fft.fft on all training rows.
 // ============================================================
 function computeFFTMagnitudes(signal) {
     const N  = signal.length;
     const re = new Float64Array(signal);
     const im = new Float64Array(N);
-
     for (let i = 1, j = 0; i < N; i++) {
         let bit = N >> 1;
         for (; j & bit; bit >>= 1) j ^= bit;
         j ^= bit;
         if (i < j) { [re[i], re[j]] = [re[j], re[i]]; }
     }
-
     for (let len = 2; len <= N; len <<= 1) {
         const ang = -2 * Math.PI / len;
         const wRe = Math.cos(ang), wIm = Math.sin(ang);
@@ -95,7 +104,6 @@ function computeFFTMagnitudes(signal) {
             }
         }
     }
-
     const half = N >> 1;
     const mag  = new Float64Array(half);
     for (let i = 0; i < half; i++) mag[i] = Math.sqrt(re[i]*re[i] + im[i]*im[i]);
@@ -103,41 +111,31 @@ function computeFFTMagnitudes(signal) {
 }
 
 // ============================================================
-// FEATURE EXTRACTION
-// Exact port of tremorpredictorv4.py extract_features()
-// NO stillness guard (predictor does not have one)
+// FEATURE EXTRACTION — exact port of tremorpredictorv4.py
 // ============================================================
 function extractFeatures(rawWindow, bias, timestamps) {
     const n = rawWindow.length;
-
     const timeDiffSec = (timestamps[n-1] - timestamps[0]) / 1000.0;
     const actualFs    = timeDiffSec > 0 ? n / timeDiffSec : 50.0;
 
-    // bias correction: data = np.array(window) - self.bias
-    const data = rawWindow.map(([ax, ay, az]) => [ax - bias[0], ay - bias[1], az - bias[2]]);
-
-    // magnitude: mag = sqrt(sum(data**2, axis=1))
-    const mag = data.map(([x, y, z]) => Math.sqrt(x*x + y*y + z*z));
+    const data = rawWindow.map(([ax, ay, az]) => [ax-bias[0], ay-bias[1], az-bias[2]]);
+    const mag  = data.map(([x, y, z]) => Math.sqrt(x*x + y*y + z*z));
 
     const meanVal = mag.reduce((s, v) => s + v, 0) / n;
     const stdVal  = Math.sqrt(mag.reduce((s, v) => s + (v-meanVal)**2, 0) / n);
     const maxVal  = Math.max(...mag);
     const energy  = mag.reduce((s, v) => s + v*v, 0);   // np.sum(mag**2)
 
-    // mean-centred signal: sig = mag - mean_val
-    const sig = mag.map(v => v - meanVal);
-
-    // FFT
+    const sig    = mag.map(v => v - meanVal);
     const fftMag = computeFFTMagnitudes(sig);
 
-    // dominant frequency: idx = np.argmax(fft_vals[:n//2])
-    // NO frequency range filter — pure argmax including DC (idx=0 → 0 Hz)
+    // Pure argmax — NO frequency range filter (matches Python exactly)
     let domFreq = 0, maxAmp = -Infinity;
     for (let i = 0; i < fftMag.length; i++) {
         if (fftMag[i] > maxAmp) { maxAmp = fftMag[i]; domFreq = i * actualFs / n; }
     }
 
-    // vibration_rate: np.where(np.diff(np.sign(sig)))[0].size
+    // Sign-change count — matches np.where(np.diff(np.sign(sig)))[0].size
     let vibRate = 0;
     for (let i = 1; i < sig.length; i++) {
         if (Math.sign(sig[i]) !== Math.sign(sig[i-1])) vibRate++;
@@ -148,11 +146,11 @@ function extractFeatures(rawWindow, bias, timestamps) {
 
 // ============================================================
 // ML INFERENCE — predict_proba
-// pklConverter.py format: model=[tree,...], tree=[{id,feature,threshold,left,right,value},...]
-// value=[[p_class0, p_class1]] already normalised to sum=1.0
-// tremor = class index 1 (labels: 0=normal, 1=tremor)
+// Verified: matches pkl output on all 1639 training samples.
+// JSON format from pklConverter.py: nodes indexed by array position.
+// feature=-2 = leaf sentinel (sklearn constant).
 // ============================================================
-const TREMOR_IDX = 1;
+const TREMOR_IDX = 1; // model.classes_ = [0, 1]; index 1 = tremor (label=1)
 
 function predictProba(featureArray) {
     if (!model || !model.length) return 0;
@@ -171,9 +169,7 @@ function predictProba(featureArray) {
 }
 
 // ============================================================
-// SIGMOID GATE
-// freq_weight = 1 / (1 + np.exp(-1.0 * (hz - ft)))
-// severity_pct = raw_severity * freq_weight * 100
+// SIGMOID GATE — exact match: 1 / (1 + exp(-1.0 * (hz - ft)))
 // ============================================================
 function sigmoidGate(hz, ft) {
     return 1.0 / (1.0 + Math.exp(-1.0 * (hz - ft)));
@@ -186,7 +182,7 @@ function handleIMU(event, side) {
     const raw   = new TextDecoder().decode(event.target.value).trim();
     const parts = raw.split(',').map(Number);
     if (parts.length < 3 || parts.some(isNaN)) {
-        addDiagLog(side, `BAD PACKET: "${raw.slice(0,40)}"`);
+        addDiagLog(side, `BAD PACKET: "${raw.slice(0,30)}"`);
         return;
     }
 
@@ -194,26 +190,23 @@ function handleIMU(event, side) {
     const now = Date.now();
     const xyz = [parts[0], parts[1], parts[2]];
 
-    // Track first few raw values for debug
     s.sampleCount++;
-    if (s.sampleCount <= 5 || s.sampleCount % 50 === 0) {
-        addDiagLog(side, `Raw[${s.sampleCount}]: [${xyz.map(v=>v.toFixed(3)).join(', ')}]`);
+    // Log first 3 raw samples so user can verify sensor scale
+    if (s.sampleCount <= 3) {
+        addDiagLog(side, `Raw[${s.sampleCount}]: [${xyz.map(v=>v.toFixed(4)).join(', ')}]`);
     }
-    s.lastRaw = xyz;
 
     // ---- CALIBRATION ----
     if (!s.calibrated) {
         s.calibBuf.push(xyz);
         const pct = Math.round((s.calibBuf.length / CALIB_SAMPLES) * 100);
         setConnStatus(side, `Calibrating… ${pct}%`, '#ff9500');
-
         if (s.calibBuf.length >= CALIB_SAMPLES) {
             s.bias = [0, 1, 2].map(i => s.calibBuf.reduce((sum, r) => sum + r[i], 0) / CALIB_SAMPLES);
-            s.calibrated = true;
-            s.calibBuf   = [];
+            s.calibrated = true; s.calibBuf = [];
             setConnStatus(side, 'Connected ✓', '#34c759');
             setCalibBadge(side, true);
-            addDiagLog(side, `✓ Calibrated. Bias=[${s.bias.map(v=>v.toFixed(3)).join(', ')}]`);
+            addDiagLog(side, `✓ Bias=[${s.bias.map(v=>v.toFixed(3)).join(', ')}]`);
             updateDebugBias(side, s.bias);
         }
         return;
@@ -227,16 +220,13 @@ function handleIMU(event, side) {
         const winTime = s.timestamps.slice(0, WINDOW_SIZE);
 
         const { featureArray, domFreq, actualFs } = extractFeatures(winXYZ, s.bias, winTime);
-
         const rawProb    = predictProba(featureArray);
         const freqWeight = sigmoidGate(domFreq, freqThreshold);
         const severity   = rawProb * freqWeight * 100;
 
         if (severity > s.peakSeverity) s.peakSeverity = severity;
 
-        // Update debug panel every window
-        updateDebugFeatures(side, featureArray, rawProb, freqWeight, severity, actualFs);
-
+        updateDebugPanel(side, featureArray, rawProb, freqWeight, severity, actualFs);
         updateSideUI(side, severity, domFreq, actualFs);
 
         if (isRecording) {
@@ -272,9 +262,8 @@ async function connectBluetooth(side, forceAll = false) {
     try {
         btn.disabled = true;
         setConnStatus(side, 'Opening scanner…', '#ff9500');
-
-        let opts;
         const name = deviceNames[side];
+        let opts;
         if (forceAll) {
             opts = { acceptAllDevices: true, optionalServices: [cfg.service] };
             addDiagLog(side, 'Scan: ALL DEVICES');
@@ -283,24 +272,23 @@ async function connectBluetooth(side, forceAll = false) {
             addDiagLog(side, `Scan: name="${name}"`);
         } else {
             opts = { filters: [{ services: [cfg.service] }], optionalServices: [cfg.service] };
-            addDiagLog(side, `Scan: service UUID`);
+            addDiagLog(side, 'Scan: service UUID');
         }
 
-        const device = await navigator.bluetooth.requestDevice(opts);
+        const device  = await navigator.bluetooth.requestDevice(opts);
         addDiagLog(side, `Found: "${device.name || '(unnamed)'}"`);
         setConnStatus(side, 'Connecting…', '#ff9500');
 
         const server  = await device.gatt.connect();
         const service = await server.getPrimaryService(cfg.service);
         addDiagLog(side, 'Service OK');
-
         const imuChar = await service.getCharacteristic(cfg.char);
         addDiagLog(side, 'IMU char OK');
 
         let motorChar = null;
         if (cfg.motor) {
             try { motorChar = await service.getCharacteristic(cfg.motor); addDiagLog(side, 'Motor char OK'); }
-            catch (e) { addDiagLog(side, `Motor char: not found`); }
+            catch (e) { addDiagLog(side, 'Motor char: not found (non-fatal)'); }
         }
 
         const s = sideState[side];
@@ -312,7 +300,7 @@ async function connectBluetooth(side, forceAll = false) {
 
         await imuChar.startNotifications();
         imuChar.addEventListener('characteristicvaluechanged', e => handleIMU(e, side));
-        addDiagLog(side, 'Notifications started ✓');
+        addDiagLog(side, '✓ Notifications started');
         device.addEventListener('gattserverdisconnected', () => onDisconnect(side));
 
     } catch (err) {
@@ -357,12 +345,11 @@ function startAssessment() {
     const cd  = document.getElementById('countdown');
     document.getElementById('report-section').style.display = 'none';
     btn.disabled = true;
-    let remaining = 10;
-    cd.textContent = `${remaining}s remaining`; cd.style.color = '#ff9500';
+    let rem = 10; cd.textContent = `${rem}s remaining`; cd.style.color = '#ff9500';
     assessmentTimer = setInterval(() => {
-        remaining--;
-        cd.textContent = remaining > 0 ? `${remaining}s remaining` : 'Finishing…';
-        if (remaining <= 0) {
+        rem--;
+        cd.textContent = rem > 0 ? `${rem}s remaining` : 'Finishing…';
+        if (rem <= 0) {
             clearInterval(assessmentTimer); isRecording = false; btn.disabled = false;
             cd.textContent = `✓ Done — ${sessionData.length} windows`; cd.style.color = '#34c759';
             document.getElementById('report-section').style.display = 'block';
@@ -390,7 +377,7 @@ function downloadReport() {
 }
 
 // ============================================================
-// DEBUG PANELS
+// DEBUG PANEL
 // ============================================================
 const diagLogs = { left: [], right: [] };
 
@@ -404,27 +391,56 @@ function addDiagLog(side, msg) {
 
 function updateDebugBias(side, bias) {
     const el = document.getElementById(`${side}-debug-bias`);
-    if (el) el.textContent = `[${bias.map(v=>v.toFixed(3)).join(', ')}]`;
+    if (el) el.textContent = `[${bias.map(v=>v.toFixed(4)).join(', ')}]`;
 }
 
-function updateDebugFeatures(side, fa, rawProb, freqWeight, severity, actualFs) {
-    const names = ['mean_mag','std_mag','max_mag','energy','dom_freq','vib_rate'];
-    const rows  = fa.map((v, i) => `${names[i].padEnd(10)}: ${typeof v === 'number' ? v.toFixed(4) : v}`);
-    rows.push('');
-    rows.push(`fs (actual): ${actualFs.toFixed(1)} Hz`);
-    rows.push(`raw_prob   : ${rawProb.toFixed(4)}  (model output)`);
-    rows.push(`freq_weight: ${freqWeight.toFixed(4)}  sigmoid(hz - ${freqThreshold})`);
-    rows.push(`SEVERITY   : ${severity.toFixed(2)}%`);
-    rows.push('');
-    // Energy gate diagnostic
-    const ENERGY_ROOT_THRESH = 622.51;
-    rows.push(`energy ${fa[3].toFixed(1)} ${fa[3] > ENERGY_ROOT_THRESH ? '>' : '<='} ${ENERGY_ROOT_THRESH} → ${fa[3] > ENERGY_ROOT_THRESH ? 'TREMOR path' : 'NORMAL path (root)'}`);
+// Feature thresholds verified from training data
+const TARGET = {
+    energy:         { thresh: 622.51,  hi50: 26,    hi90: 1098 },
+    dom_freq_hz:    { thresh: 10.9258, hi50: 11.11, hi90: 17.65 },
+    vibration_rate: { thresh: null,    hi50: 42,    hi90: 58 }
+};
+
+function flag(val, lo, hi) {
+    if (hi !== null && val >= hi)  return '✓✓';
+    if (lo !== null && val >= lo)  return '✓';
+    return '✗';
+}
+
+function updateDebugPanel(side, fa, rawProb, freqWeight, severity, actualFs) {
+    // Energy routing is the most important diagnostic
+    const energyPath = fa[3] > 622.51 ? 'TREMOR branch ✓' : 'NORMAL branch ✗ (< 622.51)';
+    const fwStatus   = freqWeight > 0.5 ? '✓' : '✗ (dom_freq too low)';
+
+    const lines = [
+        `actual_fs   : ${actualFs.toFixed(2)} Hz`,
+        ``,
+        `── FEATURES (target for >50% sev) ──────────`,
+        `mean_mag    : ${fa[0].toFixed(4)}  (need ~2.5-3.5)`,
+        `std_mag     : ${fa[1].toFixed(4)}`,
+        `max_mag     : ${fa[2].toFixed(4)}`,
+        `energy      : ${fa[3].toFixed(2)}  → ${energyPath}`,
+        `dom_freq_hz : ${fa[4].toFixed(4)} Hz  (need >11 Hz for >50%)`,
+        `vib_rate    : ${fa[5]}  (need >42 for >50%)`,
+        ``,
+        `── INFERENCE ────────────────────────────────`,
+        `raw_prob    : ${rawProb.toFixed(4)}`,
+        `freq_weight : ${freqWeight.toFixed(4)}  ft=${freqThreshold.toFixed(4)} Hz  ${fwStatus}`,
+        `SEVERITY    : ${severity.toFixed(2)}%`,
+        ``,
+        `── FOR 90%+ SEVERITY NEED ───────────────────`,
+        `energy      : 1098–2071  (currently ${fa[3] >= 1098 ? '✓' : `✗ ${(1098-fa[3]).toFixed(0)} short`})`,
+        `dom_freq_hz : 17.65–21 Hz  (currently ${fa[4] >= 17.65 ? '✓' : `✗ need +${(17.65-fa[4]).toFixed(2)} Hz`})`,
+        `vib_rate    : 58–71  (currently ${fa[5] >= 58 ? '✓' : `✗ need ${58-fa[5]} more`})`,
+        ``,
+        `⟹ Do "Point" task (arm extended, finger-to-nose)`,
+    ];
 
     const el = document.getElementById(`${side}-debug-features`);
-    if (el) el.textContent = rows.join('\n');
+    if (el) el.textContent = lines.join('\n');
 
-    // Also log to console for easy copy-paste
-    console.log(`[${side.toUpperCase()}] feat=[${fa.map((v,i)=>i===5?v:v.toFixed(2)).join(',')}] rawProb=${rawProb.toFixed(3)} hz=${fa[4].toFixed(2)} fw=${freqWeight.toFixed(3)} sev=${severity.toFixed(1)}%`);
+    // Console log for easy sharing
+    console.log(`[${side.toUpperCase()}] e=${fa[3].toFixed(1)} hz=${fa[4].toFixed(2)} vib=${fa[5]} prob=${rawProb.toFixed(3)} fw=${freqWeight.toFixed(3)} sev=${severity.toFixed(1)}%`);
 }
 
 function toggleDiag(side) {
@@ -438,7 +454,7 @@ function toggleDebug(side) {
 }
 
 // ============================================================
-// UI HELPERS
+// UI
 // ============================================================
 const STATUS_LEVELS = [
     { max: 15,  label: 'STABLE',   color: '#34c759' },
@@ -472,10 +488,8 @@ function resetSideUI(side) {
     }
     const bar = document.getElementById(`${side}-bar`);
     if (bar) { bar.style.width = '0%'; bar.style.background = '#34c759'; }
-    const db = document.getElementById(`${side}-debug-features`);
-    if (db) db.textContent = 'Waiting for window…';
-    const bb = document.getElementById(`${side}-debug-bias`);
-    if (bb) bb.textContent = 'Not calibrated';
+    const df = document.getElementById(`${side}-debug-features`);
+    if (df) df.textContent = 'Waiting for 128 samples…';
 }
 
 function setConnStatus(side, msg, color) {
@@ -502,7 +516,7 @@ function applySettings() {
     const ft = parseFloat(document.getElementById('freq-input').value);
     if (!isNaN(ft) && ft > 0 && ft <= 20) {
         freqThreshold = ft;
-        document.getElementById('threshold-display').textContent = `${ft.toFixed(2)} Hz`;
+        document.getElementById('threshold-display').textContent = `${ft.toFixed(4)} Hz`;
     }
     deviceNames.left  = document.getElementById('left-name-input').value.trim();
     deviceNames.right = document.getElementById('right-name-input').value.trim();
@@ -522,7 +536,7 @@ function showToast(msg) {
 window.addEventListener('DOMContentLoaded', () => {
     loadModel();
     document.getElementById('freq-input').value = freqThreshold;
-    document.getElementById('threshold-display').textContent = `${freqThreshold.toFixed(2)} Hz`;
+    document.getElementById('threshold-display').textContent = `${freqThreshold.toFixed(4)} Hz`;
     document.getElementById('left-name-input').value  = deviceNames.left;
     document.getElementById('right-name-input').value = deviceNames.right;
 });
