@@ -902,50 +902,54 @@ async function uploadToFirestore(sessionId, participantMode, positionData) {
     }
 }
 
-// Fetch anonymised population averages per position from Firestore
-// Returns { Still: {avg, n}, Hover: {avg, n}, Spoon: {avg, n}, Point: {avg, n}, total: n }
-// or null if not enough data (< 5 sessions)
+// Fetch anonymised population averages per position from Firestore.
+// Uses the actual loaded Random Forest model for inference on stored features,
+// giving accurate severity values identical to what the app computes live.
+// Returns { Still:{avg,n}, Hold:{avg,n}, Spoon:{avg,n}, Point:{avg,n}, total:n }
 async function fetchPopulationAverages() {
     if (!db) return null;
     try {
-        // Each doc = one position for one session
-        // We query up to 500 docs (plenty for comparison)
         const snap = await db.collection('tremor_data').limit(1000).get();
         if (snap.empty) return null;
 
-        // Accumulate per-position severity sums
-        const buckets = { Still: [], Hover: [], Spoon: [], Point: [] };
-        let sessionIds = new Set();
+        // Keys = all valid position names (including legacy 'Hover' → normalised to 'Hold')
+        const buckets    = { Still: [], Hold: [], Spoon: [], Point: [] };
+        const sessionIds = new Set();
 
         snap.forEach(doc => {
             const data = doc.data();
-            const pos  = data.position === 'Hover' ? 'Hold' : data.position;
+            // Normalise legacy 'Hover' key to 'Hold'
+            const pos = data.position === 'Hover' ? 'Hold' : data.position;
             if (!pos || !buckets[pos] || !data.windows) return;
 
             sessionIds.add(data.session_id);
 
-            // Compute severity for each window in this doc
             data.windows.forEach(w => {
-                // Windows stored from participant mode include raw_prob indirectly
-                // via the severity stored at capture time. We recompute from features
-                // using the same sigmoid as the report (steepness -2.5).
-                // raw_prob is not stored — but we stored all 6 features + label.
-                // Use label as a proxy: label=1 (tremor) windows contribute their
-                // freq-weighted severity as raw_prob * freq_weight * 100.
-                // For a proper comparison we use mean severity of the full dataset
-                // as computed by the app at recording time.
-                // Since we store windows with all features, we can at minimum
-                // compute freq_weight and use label as a binary proxy.
-                if (w.dom_freq_hz !== undefined) {
-                    const fw = 1 / (1 + Math.exp(-2.5 * (w.dom_freq_hz - freqThreshold)));
-                    // Use the label as raw_prob proxy: 1→1.0, 0→0.0
-                    // This is a rough estimate; real raw_prob would need the model
-                    // but we don't run inference on server-side data here.
-                    // We store 'severity' on upload for a better comparison —
-                    // use it if present, else use label-proxy.
-                    const rawProb = (w.raw_prob !== undefined) ? w.raw_prob : (w.label || 0);
-                    buckets[pos].push(rawProb * fw * 100);
+                if (w.dom_freq_hz === undefined) return;
+
+                // Use stored raw_prob if available (live participant sessions)
+                // Otherwise run the actual model on the stored feature vector
+                let rawProb;
+                if (w.raw_prob != null) {
+                    rawProb = w.raw_prob;
+                } else if (model) {
+                    // Run Random Forest inference — same function used for live data
+                    const feat = [
+                        w.mean_mag       || 0,
+                        w.std_mag        || 0,
+                        w.max_mag        || 0,
+                        w.energy         || 0,
+                        w.dom_freq_hz    || 0,
+                        w.vibration_rate || 0
+                    ];
+                    rawProb = predictProba(feat);
+                } else {
+                    return; // model not loaded yet, skip
                 }
+
+                // Sigmoid with -2.5 steepness (matches reportv15.py)
+                const fw  = 1 / (1 + Math.exp(-2.5 * (w.dom_freq_hz - freqThreshold)));
+                buckets[pos].push(rawProb * fw * 100);
             });
         });
 
@@ -956,7 +960,7 @@ async function fetchPopulationAverages() {
         for (const pos of Object.keys(buckets)) {
             const vals = buckets[pos];
             result[pos] = {
-                avg: vals.length ? vals.reduce((a,b)=>a+b,0)/vals.length : null,
+                avg: vals.length ? vals.reduce((a,b)=>a+b,0) / vals.length : null,
                 n:   vals.length
             };
         }
@@ -1340,11 +1344,11 @@ function generateParticipantReport(consented, uploaded, popAverages) {
             const mySevs = myRows.map(r => r.raw_prob * sigmoidReport(r.dom_freq_hz, ft) * 100);
             const myAvg  = mySevs.reduce((a,b)=>a+b,0) / mySevs.length;
             const pop    = popAverages[pos.key];
-            if (!pop || pop.avg === null) return;
+            if (!pop || pop.avg === null || pop.n === 0) return;
 
             const diff      = myAvg - pop.avg;
             const diffColor = diff > 10 ? '#ff4b4b' : diff < -10 ? '#4bff4b' : '#8b949e';
-            const diffText  = diff > 0 ? `+${diff.toFixed(1)}%` : `${diff.toFixed(1)}%`;
+            const diffText  = Math.abs(diff) < 0.05 ? '≈ average' : diff > 0 ? `+${diff.toFixed(1)}%` : `${diff.toFixed(1)}%`;
             const myBarPct  = Math.min(myAvg, 100);
             const popBarPct = Math.min(pop.avg, 100);
             const myColor   = myAvg > 50 ? '#ff4b4b' : myAvg > 20 ? '#ff9f1c' : '#34c759';
