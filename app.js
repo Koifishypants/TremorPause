@@ -968,160 +968,254 @@ async function fetchPopulationAverages() {
 }
 
 // ============================================================
-// PARTICIPANT SESSION STATE
+// PARTICIPANT SCREEN FLOW
+// Screens: welcome → connect → calibrate → record(x4) → finish
 // ============================================================
 const P_POSITIONS = [
     {
-        key:   'Still',
-        label: 'Position 1 — Resting',
-        short: 'Rest your hand flat on the table with your forearm supported.',
-        instruction: 'Place your forearm on the table with your hand lying flat and relaxed. Stay as still as possible for 40 seconds.'
+        key:         'Still',
+        stepLabel:   'Step 3 of 5',
+        title:       'Position 1 — Rest',
+        instruction: 'Place your forearm flat on the table with your hand relaxed and still. Do not move for 40 seconds.'
     },
     {
-        key:   'Hover',
-        label: 'Position 2 — Hover',
-        short: 'Hold your forearm just above your knee, elbow slightly bent.',
-        instruction: 'Lift your forearm just above your knee without resting it. Keep your elbow slightly unlocked. Hold this position for 40 seconds.'
+        key:         'Hover',
+        stepLabel:   'Step 3 of 5',
+        title:       'Position 2 — Hover',
+        instruction: 'Lift your forearm and hold it just above your knee. Keep your elbow slightly bent. Do not rest it on anything for 40 seconds.'
     },
     {
-        key:   'Spoon',
-        label: 'Position 3 — Spoon',
-        short: 'Raise your hand as if holding a spoon to your mouth.',
-        instruction: 'Raise your hand toward your mouth as if holding a spoon, with your elbow pointing outward. Hold this position for 40 seconds.'
+        key:         'Spoon',
+        stepLabel:   'Step 3 of 5',
+        title:       'Position 3 — Spoon',
+        instruction: 'Raise your hand up toward your mouth as if holding a spoon. Point your elbow outward. Hold still for 40 seconds.'
     },
     {
-        key:   'Point',
-        label: 'Position 4 — Extend',
-        short: 'Extend your arm outward, above shoulder height.',
-        instruction: 'Stretch your arm fully outward in front of you, raised above shoulder level. Hold this position for 40 seconds.'
+        key:         'Point',
+        stepLabel:   'Step 3 of 5',
+        title:       'Position 4 — Reach Out',
+        instruction: 'Stretch your arm straight out in front of you, raised above shoulder height. Hold still for 40 seconds.'
     }
 ];
 
 const P_RECORDING_SECONDS = 40;
 const P_SKIP_INITIAL      = 6;
+const P_CALIB_WAIT        = 3; // seconds to wait after "holding still" before starting next position
 
 let pSession = {
     sessionId:    '',
-    diagnosis:    'TREMOR',
+    diagnosis:    'VOLUNTARY',
     currentPos:   0,
-    started:      false,
     complete:     false,
     positionData: [[], [], [], []]
 };
+
+// Which side is the participant using (dominant hand)
+let pSide = 'left'; // set in pGoToConnect based on what's connected
 
 function generateSessionId() {
     return 'P-' + Date.now().toString(36).toUpperCase() + '-' +
            Math.random().toString(36).slice(2, 6).toUpperCase();
 }
 
-function startParticipantSession() {
+function pShowScreen(id) {
+    const screens = ['p-screen-welcome','p-screen-connect','p-screen-calibrate','p-screen-record','p-screen-finish'];
+    screens.forEach(s => {
+        const el = document.getElementById(s);
+        if (el) el.style.display = s === id ? 'block' : 'none';
+    });
+}
+
+function pBack(showId, hideId) {
+    document.getElementById(hideId).style.display = 'none';
+    document.getElementById(showId).style.display  = 'block';
+}
+
+// SCREEN 1 → 2: set diagnosis, determine which hand to connect
+function pGoToConnect() {
     const diag = document.getElementById('p-diagnosis-select').value;
     pSession = {
         sessionId:    generateSessionId(),
         diagnosis:    diag,
         currentPos:   0,
-        started:      true,
         complete:     false,
         positionData: [[], [], [], []]
     };
 
-    document.getElementById('p-setup').style.display       = 'none';
-    document.getElementById('p-recording').style.display   = 'block';
-    document.getElementById('p-report-section').style.display = 'none';
-    updateParticipantUI();
+    // Disconnect both researcher-mode connections to avoid interference
+    ['left','right'].forEach(side => {
+        const s = sideState[side];
+        if (s.device?.gatt?.connected) {
+            s.device.gatt.disconnect().catch(()=>{});
+        }
+    });
+
+    // We'll connect one device — default to left, user can switch
+    pSide = 'left';
+    document.getElementById('p-device-name').textContent = deviceNames[pSide] || 'TremorPause';
+
+    // Reset connect screen state
+    document.getElementById('p-connect-btn').style.display    = 'block';
+    document.getElementById('p-connect-btn').disabled         = false;
+    document.getElementById('p-connect-status').textContent   = '';
+    document.getElementById('p-connect-next').style.display   = 'none';
+
+    pShowScreen('p-screen-connect');
 }
 
-function updateParticipantUI() {
-    const pos   = P_POSITIONS[pSession.currentPos];
-    const total = P_POSITIONS.length;
-
-    let dots = '';
-    for (let i = 0; i < total; i++) {
-        const done   = i < pSession.currentPos;
-        const active = i === pSession.currentPos;
-        const color  = done ? '#34c759' : active ? '#00c2ff' : '#252f3a';
-        const border = active ? '2px solid #00c2ff' : '2px solid transparent';
-        dots += `<div style="width:14px;height:14px;border-radius:50%;background:${color};border:${border};"></div>`;
-    }
-    document.getElementById('p-pos-dots').innerHTML = dots;
-    document.getElementById('p-pos-counter').textContent = `Step ${pSession.currentPos + 1} of ${total}`;
-    document.getElementById('p-pos-label').textContent   = pos.label;
-    document.getElementById('p-pos-instruction').textContent = pos.instruction;
-
-    const btn = document.getElementById('p-record-btn');
-    btn.textContent = 'Start Recording';
-    btn.disabled    = false;
-    document.getElementById('p-countdown').textContent = '';
-}
-
-let pAssessmentTimer = null;
-
-function startParticipantRecording() {
-    if (isRecording) return;
-
-    // Switch IMU data to participant session
-    activeMode = 'participant';
-    isRecording = true;
-
-    const btn = document.getElementById('p-record-btn');
-    const cd  = document.getElementById('p-countdown');
+// SCREEN 2: connect the dominant hand Arduino
+async function pConnectDevice() {
+    const btn = document.getElementById('p-connect-btn');
+    const status = document.getElementById('p-connect-status');
     btn.disabled = true;
+    status.textContent = 'Looking for your device…';
+    status.style.color = 'var(--orange)';
 
-    let rem = P_RECORDING_SECONDS;
-    cd.textContent = `${rem}s remaining`; cd.style.color = '#ff9500';
+    try {
+        await connectBluetooth(pSide, false);
+        // connectBluetooth triggers calibration internally
+        // Poll until calibrated
+        status.textContent = 'Connecting…';
+        const waitForCalib = setInterval(() => {
+            const s = sideState[pSide];
+            if (s.calibrated) {
+                clearInterval(waitForCalib);
+                status.textContent = '';
+                document.getElementById('p-connect-next').style.display = 'block';
+                btn.style.display = 'none';
+            } else if (s.connected) {
+                status.textContent = 'Calibrating — hold still…';
+                status.style.color = 'var(--orange)';
+            }
+        }, 500);
+        // Timeout after 30s
+        setTimeout(() => clearInterval(waitForCalib), 30000);
+    } catch(e) {
+        status.textContent = 'Could not connect. Please try again.';
+        status.style.color = 'var(--red)';
+        btn.disabled = false;
+    }
+}
 
-    pAssessmentTimer = setInterval(() => {
+// SCREEN 2 → 3: go to calibrate before position posIdx
+function pGoToCalibrate(posIdx) {
+    pSession.currentPos = posIdx;
+    const stepNum = posIdx + 2; // step 2 = first calib, step 3 = first position, etc.
+    document.getElementById('p-calib-step-label').textContent = `Step ${stepNum} of 5`;
+
+    // Reset calib screen
+    document.getElementById('p-calib-btn').style.display       = 'block';
+    document.getElementById('p-calib-btn').disabled            = false;
+    document.getElementById('p-calib-countdown').style.display = 'none';
+
+    pShowScreen('p-screen-calibrate');
+}
+
+let pCalibTimer = null;
+
+// SCREEN 3: user presses "I'm holding still"
+// Re-trigger calibration on the Arduino side by resetting bias
+function pStartCalibrate() {
+    const btn = document.getElementById('p-calib-btn');
+    btn.disabled = true;
+    btn.style.display = 'none';
+
+    // Force recalibration: clear buffer and reset calibrated flag
+    const s = sideState[pSide];
+    s.calibrated  = false;
+    s.calibBuf    = [];
+    s.bias        = [0, 0, 0];
+    s.rawBuffer   = [];
+    s.timestamps  = [];
+
+    document.getElementById('p-calib-countdown').style.display = 'block';
+    let rem = P_CALIB_WAIT;
+    document.getElementById('p-calib-timer').textContent = rem;
+
+    pCalibTimer = setInterval(() => {
         rem--;
-        cd.textContent = rem > 0 ? `${rem}s remaining` : 'Finishing…';
+        document.getElementById('p-calib-timer').textContent = rem;
         if (rem <= 0) {
-            clearInterval(pAssessmentTimer);
-            isRecording = false;
-            activeMode  = 'researcher'; // reset so researcher mode still works
-            finishParticipantPosition();
+            clearInterval(pCalibTimer);
+            // Go straight to recording screen
+            pShowRecordScreen(pSession.currentPos);
         }
     }, 1000);
 }
 
-function finishParticipantPosition() {
-    const posIdx = pSession.currentPos;
-    const count  = pSession.positionData[posIdx].length;
-    const cd     = document.getElementById('p-countdown');
-    cd.textContent = `✓ ${P_POSITIONS[posIdx].key} complete — ${count} windows`;
-    cd.style.color = '#34c759';
+// SCREEN 3 → 4
+function pShowRecordScreen(posIdx) {
+    const pos = P_POSITIONS[posIdx];
+    const stepNum = posIdx + 2;
 
-    pSession.currentPos++;
+    document.getElementById('p-record-step-label').textContent  = `Position ${posIdx + 1} of 4`;
+    document.getElementById('p-record-title').textContent        = pos.title;
+    document.getElementById('p-record-instruction').textContent  = pos.instruction;
 
-    if (pSession.currentPos >= P_POSITIONS.length) {
-        pSession.complete = true;
-        document.getElementById('p-record-btn').textContent = 'All positions complete';
-        document.getElementById('p-record-btn').disabled    = true;
-        document.getElementById('p-report-section').style.display = 'block';
-    } else {
-        setTimeout(() => updateParticipantUI(), 800);
+    // Progress dots
+    let dots = '';
+    for (let i = 0; i < P_POSITIONS.length; i++) {
+        const done   = i < posIdx;
+        const active = i === posIdx;
+        const color  = done ? '#34c759' : active ? '#00c2ff' : '#252f3a';
+        const border = active ? '2px solid #00c2ff' : '2px solid transparent';
+        dots += `<div class="p-dot" style="background:${color};border:${border};"></div>`;
     }
+    document.getElementById('p-progress-dots').innerHTML = dots;
+
+    // Reset record screen state
+    document.getElementById('p-record-btn').style.display       = 'block';
+    document.getElementById('p-record-btn').disabled            = false;
+    document.getElementById('p-record-countdown').style.display = 'none';
+    document.getElementById('p-record-done').style.display      = 'none';
+
+    pShowScreen('p-screen-record');
 }
 
-function resetParticipantSession() {
+let pRecordTimer = null;
+
+// SCREEN 4: user presses "Start — I'm in position"
+function pStartRecording() {
+    document.getElementById('p-record-btn').style.display       = 'none';
+    document.getElementById('p-record-countdown').style.display = 'block';
+
+    isRecording = true;
+    activeMode  = 'participant';
+
+    let rem = P_RECORDING_SECONDS;
+    document.getElementById('p-record-timer').textContent = rem;
+
+    pRecordTimer = setInterval(() => {
+        rem--;
+        document.getElementById('p-record-timer').textContent = rem;
+        if (rem <= 0) {
+            clearInterval(pRecordTimer);
+            isRecording = false;
+            activeMode  = 'researcher';
+            document.getElementById('p-record-countdown').style.display = 'none';
+            document.getElementById('p-record-done').style.display      = 'block';
+
+            const nextPos = pSession.currentPos + 1;
+            if (nextPos >= P_POSITIONS.length) {
+                // All done
+                pSession.complete = true;
+                setTimeout(() => pShowScreen('p-screen-finish'), 1500);
+            } else {
+                // Next position — show calibrate screen after brief pause
+                setTimeout(() => pGoToCalibrate(nextPos), 1500);
+            }
+        }
+    }, 1000);
+}
+
+function pResetFull() {
     isRecording = false;
-    clearInterval(pAssessmentTimer);
+    clearInterval(pRecordTimer);
+    clearInterval(pCalibTimer);
     activeMode = 'researcher';
-    document.getElementById('p-setup').style.display        = 'block';
-    document.getElementById('p-recording').style.display    = 'none';
-    document.getElementById('p-report-section').style.display = 'none';
+    pSession = { sessionId:'', diagnosis:'VOLUNTARY', currentPos:0, complete:false, positionData:[[], [], [], []] };
+    pShowScreen('p-screen-welcome');
 }
-
-// ============================================================
-// PARTICIPANT IMU ROUTING
-// The handleIMU function already calls isRecording.
-// We need to route data to pSession when in participant mode.
-// Patch: override the push inside handleIMU via mode check.
-// ============================================================
-// NOTE: handleIMU checks activeMode to decide where to push data.
-// We patch it by adding a data router — see the modified handleIMU
-// section below. The original handleIMU pushes to session.positionData
-// when isRecording && activeMode === 'researcher', and to
-// pSession.positionData when activeMode === 'participant'.
-// This is handled by replacing the push line in handleIMU.
 
 // ============================================================
 // PARTICIPANT DATA CONSENT + UPLOAD
