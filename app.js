@@ -11,6 +11,17 @@ const CALIB_SAMPLES = 50;
 const DEFAULT_FT    = 9.32;
 let freqThreshold   = DEFAULT_FT;
 
+// Firebase — declared here so initFirebase() can be called from DOMContentLoaded
+let db = null;
+const FIREBASE_CONFIG = {
+    apiKey:            "AIzaSyAzMGMviZmrwthvTIPXlGk5VmrqQT2b5NM",
+    authDomain:        "tremorpauseweb.firebaseapp.com",
+    projectId:         "tremorpauseweb",
+    storageBucket:     "tremorpauseweb.firebasestorage.app",
+    messagingSenderId: "553085922178",
+    appId:             "1:553085922178:web:e6f2ebdafddd9520b77d9b"
+};
+
 const POSITIONS = [
     { key: 'Still', label: 'Position 1 — Still',  desc: 'Hand flat on table, forearm rested.' },
     { key: 'Hold',  label: 'Position 2 — Hold',   desc: 'Forearm held above knee, elbow unlocked.' },
@@ -814,16 +825,6 @@ window.addEventListener('DOMContentLoaded', () => {
 // ============================================================
 // FIREBASE INTEGRATION
 // ============================================================
-let db = null;
-
-const FIREBASE_CONFIG = {
-    apiKey:            "AIzaSyAzMGMviZmrwthvTIPXlGk5VmrqQT2b5NM",
-    authDomain:        "tremorpauseweb.firebaseapp.com",
-    projectId:         "tremorpauseweb",
-    storageBucket:     "tremorpauseweb.firebasestorage.app",
-    messagingSenderId: "553085922178",
-    appId:             "1:553085922178:web:e6f2ebdafddd9520b77d9b"
-};
 
 function initFirebase(config) {
     try {
