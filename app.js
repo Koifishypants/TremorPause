@@ -802,18 +802,25 @@ window.addEventListener('DOMContentLoaded', () => {
     document.getElementById('threshold-display').textContent = `${freqThreshold.toFixed(4)} Hz`;
     document.getElementById('left-name-input').value  = deviceNames.left;
     document.getElementById('right-name-input').value = deviceNames.right;
-    // Restore Firebase config if saved
-    const savedFb = localStorage.getItem('tp_firebase_config');
-    if (savedFb) {
-        document.getElementById('firebase-config-input').value = savedFb;
-        initFirebase(JSON.parse(savedFb));
-    }
+    // Auto-initialize Firebase with hardcoded config
+    initFirebase(FIREBASE_CONFIG);
+    const cfgEl = document.getElementById('firebase-config-input');
+    if (cfgEl) cfgEl.value = JSON.stringify(FIREBASE_CONFIG, null, 2);
 });
 
 // ============================================================
 // FIREBASE INTEGRATION
 // ============================================================
 let db = null;
+
+const FIREBASE_CONFIG = {
+    apiKey:            "AIzaSyAzMGMviZmrwthvTIPXlGk5VmrqQT2b5NM",
+    authDomain:        "tremorpauseweb.firebaseapp.com",
+    projectId:         "tremorpauseweb",
+    storageBucket:     "tremorpauseweb.firebasestorage.app",
+    messagingSenderId: "553085922178",
+    appId:             "1:553085922178:web:e6f2ebdafddd9520b77d9b"
+};
 
 function initFirebase(config) {
     try {
@@ -825,10 +832,10 @@ function initFirebase(config) {
             firebase.initializeApp(config);
         }
         db = firebase.firestore();
-        setFirebaseStatus('✓ Connected to cloud', '#34c759');
+        setFirebaseStatus('\u2713 Connected to cloud', '#34c759');
         return true;
     } catch (e) {
-        setFirebaseStatus(`✗ ${e.message}`, '#ff3b30');
+        setFirebaseStatus(`\u2717 ${e.message}`, '#ff3b30');
         return false;
     }
 }
