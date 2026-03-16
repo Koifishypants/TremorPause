@@ -272,9 +272,6 @@ async function connectBluetooth(side, forceAll = false) {
         btn.disabled = true;
         setConnStatus(side, 'Opening scanner…', '#ff9500');
         const name = deviceNames[side];
-
-        // Tell user which device to pick before the OS picker appears
-        const name = deviceNames[side];
         if (name) showToast(`Select "${name}" from the list`);
 
         // Always use acceptAllDevices
