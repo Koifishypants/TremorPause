@@ -175,7 +175,7 @@
                     <div class="telem-cell"><div class="telem-key">Fs</div><div id="left-fs" class="telem-val">--</div></div>
                 </div>
                 <button id="left-conn-btn" class="conn-btn" onclick="connectBluetooth('left')">Connect</button>
-                <button class="scan-all-btn" onclick="connectBluetooth('left',true)">⊕ Scan all BLE devices</button>
+                <div style="font-size:10px;color:var(--muted);text-align:center;margin-top:-4px;">Look for <strong style="color:#00c2ff;">Left-TremorPause</strong> in the list</div>
                 <button class="debug-toggle" onclick="toggleDebug('left')">▾ Feature Debug Panel</button>
                 <div id="left-debug-panel" class="debug-panel" style="display:none;">
                     <div class="debug-section-label">Calibration bias</div>
@@ -210,7 +210,7 @@
                     <div class="telem-cell"><div class="telem-key">Fs</div><div id="right-fs" class="telem-val">--</div></div>
                 </div>
                 <button id="right-conn-btn" class="conn-btn" onclick="connectBluetooth('right')">Connect</button>
-                <button class="scan-all-btn" onclick="connectBluetooth('right',true)">⊕ Scan all BLE devices</button>
+                <div style="font-size:10px;color:var(--muted);text-align:center;margin-top:-4px;">Look for <strong style="color:#bf00ff;">Right-TremorPause</strong> in the list</div>
                 <button class="debug-toggle" onclick="toggleDebug('right')">▾ Feature Debug Panel</button>
                 <div id="right-debug-panel" class="debug-panel" style="display:none;">
                     <div class="debug-section-label">Calibration bias</div>
@@ -267,7 +267,8 @@
                 <div class="p-step-title">Connect your device</div>
                 <div class="p-step-body">
                     Make sure the <strong style="color:var(--text);">glove is on your dominant hand</strong> and the small device is turned on.<br><br>
-                    Then press the button below and select <strong style="color:var(--text);">"<span id="p-device-name">TremorPause</span>"</strong> from the list that appears.
+                    Then press the button below and select <strong style="color:var(--text);">"<span id="p-device-name">TremorPause</span>"</strong> from the list that appears.<br><br>
+                    <span style="font-size:14px;color:var(--muted);">If you are not sure which one it is, look for a device with "TremorPause" in the name.</span>
                 </div>
                 <button class="p-big-btn p-btn-blue" id="p-connect-btn" onclick="pConnectDevice()">
                     Connect my device

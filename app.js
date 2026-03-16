@@ -261,17 +261,20 @@ async function connectBluetooth(side, forceAll = false) {
         btn.disabled = true;
         setConnStatus(side, 'Opening scanner…', '#ff9500');
         const name = deviceNames[side];
-        let opts;
-        if (forceAll) {
-            opts = { acceptAllDevices: true, optionalServices: [cfg.service] };
-            addDiagLog(side, 'Scan: ALL DEVICES');
-        } else if (name) {
-            opts = { filters: [{ name }], optionalServices: [cfg.service] };
-            addDiagLog(side, `Scan: name="${name}"`);
-        } else {
-            opts = { filters: [{ services: [cfg.service] }], optionalServices: [cfg.service] };
-            addDiagLog(side, 'Scan: service UUID');
-        }
+
+        // Tell user which device to pick before the OS picker appears
+        const name = deviceNames[side];
+        if (name) showToast(`Select "${name}" from the list`);
+
+        // Always use acceptAllDevices
+        // Arduino_LSM6DSOX boards don't always advertise the service UUID.
+        // User picks their device by name from the full list.
+        const opts = {
+            acceptAllDevices: true,
+            optionalServices: [cfg.service]
+        };
+        addDiagLog(side, `Scan: all devices (looking for "${name}")`);
+
         const device  = await navigator.bluetooth.requestDevice(opts);
         addDiagLog(side, `Found: "${device.name || '(unnamed)'}"`);
         setConnStatus(side, 'Connecting…', '#ff9500');
@@ -1094,7 +1097,7 @@ async function pConnectDevice() {
     status.style.color = 'var(--orange)';
 
     try {
-        await connectBluetooth(pSide, false);
+        await connectBluetooth(pSide, true);
         // connectBluetooth triggers calibration internally
         // Poll until calibrated
         status.textContent = 'Connecting…';
