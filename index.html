@@ -241,6 +241,16 @@
                     We will guide you through each step — there is nothing to worry about.
                 </div>
                 <div class="p-divider"></div>
+                <div class="p-step-body" style="font-size:14px;margin-top:4px;">Which is your dominant hand?</div>
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:8px;">
+                    <button id="p-hand-left" class="p-big-btn p-btn-blue" onclick="pSelectHand('left')" style="font-size:15px;padding:14px;">
+                        ✋ Left hand
+                    </button>
+                    <button id="p-hand-right" class="p-big-btn p-btn-grey" onclick="pSelectHand('right')" style="font-size:15px;padding:14px;">
+                        🤚 Right hand
+                    </button>
+                </div>
+                <div class="p-divider"></div>
                 <div class="p-step-body" style="font-size:14px;">Do you have a diagnosed tremor condition?</div>
                 <select id="p-diagnosis-select" style="margin-top:8px;font-size:15px;padding:14px 16px;">
                     <option value="VOLUNTARY">No — I do not have a tremor</option>

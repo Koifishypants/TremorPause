@@ -1011,7 +1011,18 @@ let pSession = {
 };
 
 // Which side is the participant using (dominant hand)
-let pSide = 'left'; // set in pGoToConnect based on what's connected
+let pSide = 'left'; // updated by pSelectHand()
+
+function pSelectHand(side) {
+    pSide = side;
+    const activeColor   = side === 'left' ? 'var(--accent)' : 'var(--purple)';
+    const lBtn = document.getElementById('p-hand-left');
+    const rBtn = document.getElementById('p-hand-right');
+    if (lBtn && rBtn) {
+        lBtn.className = side === 'left' ? 'p-big-btn p-btn-blue'  : 'p-big-btn p-btn-grey';
+        rBtn.className = side === 'right' ? 'p-big-btn p-btn-purple' : 'p-big-btn p-btn-grey';
+    }
+}
 
 function generateSessionId() {
     return 'P-' + Date.now().toString(36).toUpperCase() + '-' +
@@ -1050,8 +1061,7 @@ function pGoToConnect() {
         }
     });
 
-    // We'll connect one device — default to left, user can switch
-    pSide = 'left';
+    // pSide already set by pSelectHand() on the welcome screen
     document.getElementById('p-device-name').textContent = deviceNames[pSide] || 'TremorPause';
 
     // Reset connect screen state
