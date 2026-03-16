@@ -34,13 +34,13 @@ const SKIP_INITIAL      = 6;   // skip first N windows (calibration settling), s
 
 const DEVICEMAP = {
     left: {
-        service: '12345678-1234-5678-1234-56789abcdef0',
-        char:    'abcdef01-1234-5678-1234-56789abcdef0',
-        motor:   'abcdef02-1234-5678-1234-56789abcdef0'
+        service: '12345678-1234-5678-1234-56789abcdef1',
+        char:    'abcdef01-1234-5678-1234-56789abcdef1',
+        motor:   'abcdef02-1234-5678-1234-56789abcdef1'
     },
     right: {
-        service: '12345678-1234-5678-1234-56789abcdef0',
-        char:    'abcdef01-1234-5678-1234-56789abcdef0',
+        service: '12345678-1234-5678-1234-56789abcdef2',
+        char:    'abcdef01-1234-5678-1234-56789abcdef2',
         motor:   null
     }
 };
