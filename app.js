@@ -1015,13 +1015,21 @@ let pSide = 'left'; // updated by pSelectHand()
 
 function pSelectHand(side) {
     pSide = side;
-    const activeColor   = side === 'left' ? 'var(--accent)' : 'var(--purple)';
     const lBtn = document.getElementById('p-hand-left');
     const rBtn = document.getElementById('p-hand-right');
-    if (lBtn && rBtn) {
-        lBtn.className = side === 'left' ? 'p-big-btn p-btn-blue'  : 'p-big-btn p-btn-grey';
-        rBtn.className = side === 'right' ? 'p-big-btn p-btn-purple' : 'p-big-btn p-btn-grey';
-    }
+    if (!lBtn || !rBtn) return;
+    // Reset both to unselected
+    lBtn.style.background = 'var(--panel)';
+    lBtn.style.color      = 'var(--muted)';
+    lBtn.style.border     = '1.5px solid var(--border2)';
+    rBtn.style.background = 'var(--panel)';
+    rBtn.style.color      = 'var(--muted)';
+    rBtn.style.border     = '1.5px solid var(--border2)';
+    // Highlight selected
+    const active = side === 'left' ? lBtn : rBtn;
+    active.style.background = side === 'left' ? 'var(--accent)' : 'var(--purple)';
+    active.style.color      = side === 'left' ? '#000' : '#fff';
+    active.style.border     = 'none';
 }
 
 function generateSessionId() {
