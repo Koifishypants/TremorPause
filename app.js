@@ -910,7 +910,7 @@ async function fetchPopulationAverages() {
     try {
         // Each doc = one position for one session
         // We query up to 500 docs (plenty for comparison)
-        const snap = await db.collection('tremor_data').limit(500).get();
+        const snap = await db.collection('tremor_data').limit(1000).get();
         if (snap.empty) return null;
 
         // Accumulate per-position severity sums
@@ -919,7 +919,7 @@ async function fetchPopulationAverages() {
 
         snap.forEach(doc => {
             const data = doc.data();
-            const pos  = data.position;
+            const pos  = data.position === 'Hover' ? 'Hold' : data.position;
             if (!pos || !buckets[pos] || !data.windows) return;
 
             sessionIds.add(data.session_id);
@@ -950,7 +950,7 @@ async function fetchPopulationAverages() {
         });
 
         const nSessions = sessionIds.size;
-        if (nSessions < 3) return null; // Not enough data to be meaningful
+        if (nSessions < 1) return null;
 
         const result = { total: nSessions };
         for (const pos of Object.keys(buckets)) {
@@ -1331,7 +1331,7 @@ function generateParticipantReport(consented, uploaded, popAverages) {
 
     // Population comparison section
     let comparisonSection = '';
-    if (popAverages && popAverages.total >= 3) {
+    if (popAverages && popAverages.total >= 1) {
         const nSessions = popAverages.total;
         let compRows = '';
         P_POSITIONS.forEach((pos, i) => {
