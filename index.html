@@ -4,14 +4,22 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>TremorPause AI</title>
+    <link rel="manifest" href="manifest.json">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-title" content="TremorPause">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Syne:wght@600;700;800&display=swap" rel="stylesheet">
+
+    <!-- Firebase SDKs -->
+    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+
     <style>
         :root {
             --bg:#080b10; --surface:#0f1318; --panel:#141920;
             --border:#1e2630; --border2:#252f3a; --text:#e8edf2;
             --muted:#4a5568; --accent:#00c2ff; --green:#34c759;
-            --orange:#ff9500; --red:#ff3b30;
+            --orange:#ff9500; --red:#ff3b30; --purple:#bf00ff;
             --mono:'DM Mono',monospace; --disp:'Syne',sans-serif;
         }
         *,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
@@ -26,6 +34,12 @@
         .logo{font-family:var(--disp);font-size:20px;font-weight:800;} .logo span{color:var(--accent);}
         #model-status{font-size:11px;color:var(--orange);transition:color .3s;}
 
+        /* TABS */
+        .tab-bar{display:grid;grid-template-columns:1fr 1fr;gap:0;background:var(--surface);border:1px solid var(--border);border-radius:14px;overflow:hidden;}
+        .tab-btn{padding:14px;border:none;background:transparent;color:var(--muted);font-family:var(--disp);font-size:12px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;cursor:pointer;transition:all .2s;border-bottom:2px solid transparent;}
+        .tab-btn:hover{color:var(--text);}
+        .tab-active{color:var(--accent) !important;border-bottom-color:var(--accent) !important;background:var(--panel);}
+
         /* DEVICE GRID */
         .device-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;}
         @media(max-width:540px){.device-grid{grid-template-columns:1fr;}}
@@ -35,28 +49,23 @@
         .device-card::before{content:'';position:absolute;top:0;left:0;right:0;height:2px;opacity:.5;}
         .left-card::before{background:linear-gradient(90deg,transparent,#00c2ff,transparent);}
         .right-card::before{background:linear-gradient(90deg,transparent,#bf00ff,transparent);}
-
         .card-header{display:flex;justify-content:space-between;align-items:flex-start;}
         .card-title{font-family:var(--disp);font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;}
         .left-card .card-title{color:#00c2ff;} .right-card .card-title{color:#bf00ff;}
         .conn-status-wrap{display:flex;flex-direction:column;align-items:flex-end;gap:2px;}
         .conn-status{font-size:11px;color:var(--red);transition:color .3s;}
         .calib-badge{font-size:10px;color:var(--muted);}
-
         .severity-block{display:flex;align-items:flex-end;gap:10px;}
         .severity-number{font-family:var(--disp);font-size:40px;font-weight:800;line-height:1;}
         .severity-meta{display:flex;flex-direction:column;gap:3px;padding-bottom:4px;}
         .status-label{font-family:var(--disp);font-size:11px;font-weight:700;letter-spacing:2px;color:var(--muted);transition:color .3s;}
         .peak-label{font-size:10px;color:var(--muted);}
-
         .bar-track{height:8px;background:var(--border2);border-radius:4px;overflow:hidden;}
         .bar-fill{height:100%;width:0%;background:var(--green);border-radius:4px;transition:width .25s ease,background .25s ease;}
-
         .telemetry{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;}
         .telem-cell{background:var(--panel);border:1px solid var(--border);border-radius:8px;padding:7px 9px;}
         .telem-key{font-size:9px;text-transform:uppercase;letter-spacing:1px;color:var(--muted);margin-bottom:3px;}
         .telem-val{font-size:13px;font-weight:500;color:var(--text);}
-
         .conn-btn{width:100%;padding:10px;border:none;border-radius:10px;font-family:var(--disp);font-size:11px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;cursor:pointer;transition:opacity .2s,transform .1s;}
         .conn-btn:active{transform:scale(.97);} .conn-btn:disabled{opacity:.4;cursor:not-allowed;}
         .left-card .conn-btn{background:#00c2ff22;color:#00c2ff;border:1.5px solid #00c2ff55;}
@@ -64,15 +73,13 @@
         .scan-all-btn{width:100%;padding:7px;border-radius:8px;font-family:var(--mono);font-size:11px;cursor:pointer;background:transparent;color:var(--muted);border:1px dashed var(--border2);}
         .scan-all-btn:hover{color:var(--text);border-color:var(--muted);}
 
-        /* DEBUG PANEL */
+        /* DEBUG */
         .debug-toggle{width:100%;background:none;border:none;color:#ff9500;font-size:10px;font-family:var(--mono);cursor:pointer;text-align:left;padding:2px 0;letter-spacing:.5px;}
         .debug-toggle:hover{color:var(--text);}
         .debug-panel{background:#050d07;border:1px solid #183020;border-radius:8px;padding:10px 12px;margin-top:2px;}
         .debug-section-label{font-size:9px;text-transform:uppercase;letter-spacing:1.5px;color:#2a6040;margin-bottom:4px;}
         .debug-mono{font-family:var(--mono);font-size:10px;color:#50d08a;white-space:pre;line-height:1.65;}
         .debug-bias{font-family:var(--mono);font-size:10px;color:#80e0aa;margin-bottom:8px;}
-
-        /* DIAG LOG */
         .diag-toggle{width:100%;background:none;border:none;color:var(--muted);font-size:10px;font-family:var(--mono);cursor:pointer;text-align:left;padding:2px 0;}
         .diag-toggle:hover{color:var(--text);}
         .diag-panel{display:none;background:#0a0d12;border:1px solid var(--border);border-radius:8px;padding:10px;margin-top:2px;}
@@ -82,35 +89,48 @@
         .section-card{background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:20px;}
         .section-title{font-family:var(--disp);font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:2px;color:var(--muted);margin-bottom:14px;padding-bottom:10px;border-bottom:1px solid var(--border);}
 
-        /* ASSESSMENT */
-        .assess-row{display:flex;gap:10px;align-items:stretch;flex-wrap:wrap;}
-        select{flex:1;min-width:150px;padding:10px 12px;background:var(--panel);color:var(--text);border:1.5px solid var(--border2);border-radius:10px;font-family:var(--mono);font-size:12px;appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%234a5568' fill='none' stroke-width='2' stroke-linecap='round'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 12px center;padding-right:30px;cursor:pointer;}
-        select:focus{outline:none;border-color:var(--accent);}
-        .action-btn{padding:10px 20px;border:none;border-radius:10px;font-family:var(--disp);font-size:11px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;cursor:pointer;white-space:nowrap;}
+        /* BUTTONS */
+        .action-btn{padding:10px 20px;border:none;border-radius:10px;font-family:var(--disp);font-size:11px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;cursor:pointer;white-space:nowrap;transition:opacity .2s,transform .1s;}
+        .action-btn:active{transform:scale(.97);}
         .action-btn:disabled{opacity:.4;cursor:not-allowed;}
-        .btn-record{background:var(--accent);color:#000;} .btn-download{background:var(--green);color:#000;}
+        .btn-record{background:var(--accent);color:#000;}
+        .btn-green{background:var(--green);color:#000;}
+        .btn-purple{background:var(--purple);color:#fff;}
+        .btn-muted{background:var(--panel);color:var(--muted);border:1px solid var(--border2);}
         .countdown{font-size:12px;color:var(--orange);margin-top:8px;min-height:18px;}
-        #report-section{display:none;margin-top:10px;}
-        #summary-text{font-size:12px;padding:10px 14px;background:var(--panel);border-radius:8px;border:1px solid var(--border);margin-bottom:10px;}
+        .name-label{font-size:10px;color:var(--muted);margin-bottom:4px;}
+
+        /* POSITION FLOW */
+        .pos-dots{display:flex;gap:8px;align-items:center;margin-bottom:12px;}
+        .pos-title{font-family:var(--disp);font-size:18px;font-weight:800;color:var(--accent);margin-bottom:6px;}
+        .pos-desc{font-size:12px;color:var(--muted);margin-bottom:14px;line-height:1.7;}
+
+        /* PARTICIPANT CARD */
+        .participant-card{background:linear-gradient(135deg,#0a0f1a,#0d1520);border:1px solid #1a2840;border-radius:16px;padding:20px;}
+        .participant-card .section-title{color:#7ab4ff;border-bottom-color:#1a2840;}
+
+        /* CONSENT */
+        .consent-box{background:#0a1020;border:1px solid #1a2840;border-radius:10px;padding:14px 16px;font-size:11px;color:#5a7a9a;line-height:1.8;margin-bottom:14px;}
+        .consent-box strong{color:#8aaad0;display:block;margin-bottom:6px;}
+        .consent-check-row{display:flex;align-items:center;gap:10px;margin-top:10px;}
+        input[type="checkbox"]{width:16px;height:16px;cursor:pointer;}
 
         /* SETTINGS */
         .settings-row{display:grid;grid-template-columns:1fr auto auto;gap:10px;align-items:center;margin-bottom:14px;}
         .settings-label{font-size:11px;color:var(--muted);line-height:1.5;}
         .settings-label strong{color:var(--text);display:block;margin-bottom:2px;}
-        input[type="number"],input[type="text"]{padding:9px 10px;background:var(--panel);color:var(--text);border:1.5px solid var(--border2);border-radius:8px;font-family:var(--mono);font-size:13px;}
+        input[type="number"],input[type="text"],textarea{padding:9px 10px;background:var(--panel);color:var(--text);border:1.5px solid var(--border2);border-radius:8px;font-family:var(--mono);font-size:13px;}
         input[type="number"]{width:90px;text-align:center;} input[type="text"]{width:100%;}
-        input:focus{outline:none;border-color:var(--accent);}
+        textarea{width:100%;resize:vertical;min-height:80px;font-size:11px;}
+        input:focus,textarea:focus{outline:none;border-color:var(--accent);}
+        select{width:100%;padding:10px 12px;background:var(--panel);color:var(--text);border:1.5px solid var(--border2);border-radius:10px;font-family:var(--mono);font-size:12px;appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%234a5568' fill='none' stroke-width='2' stroke-linecap='round'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 12px center;padding-right:30px;cursor:pointer;}
+        select:focus{outline:none;border-color:var(--accent);}
         .apply-btn{padding:9px 16px;background:var(--panel);color:var(--accent);border:1.5px solid var(--accent);border-radius:8px;font-family:var(--disp);font-size:11px;font-weight:700;letter-spacing:1px;text-transform:uppercase;cursor:pointer;}
         .apply-btn:hover{background:#00c2ff18;}
         .threshold-display{font-size:11px;color:var(--muted);margin-top:6px;}
         .threshold-display span{color:var(--accent);font-weight:500;}
         .name-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:12px;}
-        .name-label{font-size:10px;color:var(--muted);margin-bottom:4px;}
-
-        /* INFO BOX */
-        .info-box{background:#0a1408;border:1px solid #1a3010;border-radius:10px;padding:14px 16px;font-size:11px;color:#4a7a40;line-height:1.8;}
-        .info-box strong{color:#7abf6a;display:block;margin-bottom:4px;}
-        .info-box code{background:#0f1f0a;border-radius:3px;padding:1px 4px;color:#8ad080;}
+        #firebase-status{font-size:11px;color:var(--muted);margin-top:6px;}
 
         #toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:var(--panel);border:1px solid var(--border2);color:var(--text);padding:10px 20px;border-radius:10px;font-size:12px;opacity:0;transition:opacity .3s;pointer-events:none;z-index:999;}
         .footer{text-align:center;font-size:10px;color:var(--muted);padding:6px 0 16px;}
@@ -128,180 +148,323 @@
         </div>
     </header>
 
-    <!-- DEVICE CARDS -->
-    <div class="device-grid">
-
-        <!-- LEFT -->
-        <div class="device-card left-card">
-            <div class="card-header">
-                <span class="card-title">Left Hand</span>
-                <div class="conn-status-wrap">
-                    <span id="left-conn-status" class="conn-status">Disconnected</span>
-                    <span id="left-calib-badge" class="calib-badge">Not calibrated</span>
-                </div>
-            </div>
-            <div class="severity-block">
-                <div id="left-sev" class="severity-number">--</div>
-                <div class="severity-meta">
-                    <span id="left-label" class="status-label">--</span>
-                    <span class="peak-label">Peak: <span id="left-peak">--</span></span>
-                </div>
-            </div>
-            <div class="bar-track"><div id="left-bar" class="bar-fill"></div></div>
-            <div class="telemetry">
-                <div class="telem-cell"><div class="telem-key">Freq</div><div id="left-hz" class="telem-val">--</div></div>
-                <div class="telem-cell"><div class="telem-key">Motor</div><div id="left-motor" class="telem-val" style="color:var(--muted)">IDLE</div></div>
-                <div class="telem-cell"><div class="telem-key">Fs</div><div id="left-fs" class="telem-val">--</div></div>
-            </div>
-            <button id="left-conn-btn" class="conn-btn" onclick="connectBluetooth('left')">Connect</button>
-            <button class="scan-all-btn" onclick="connectBluetooth('left',true)">⊕ Scan all BLE devices</button>
-            <button class="debug-toggle" onclick="toggleDebug('left')">▾ Feature Debug Panel</button>
-            <div id="left-debug-panel" class="debug-panel">
-                <div class="debug-section-label">Calibration bias</div>
-                <div id="left-debug-bias" class="debug-bias">Hold still on connect — first 50 samples</div>
-                <div class="debug-section-label">Live features &amp; inference</div>
-                <div id="left-debug-features" class="debug-mono">Waiting for 128 samples…</div>
-            </div>
-            <button class="diag-toggle" onclick="toggleDiag('left')">▾ BLE log</button>
-            <div id="left-diag" class="diag-panel"><div id="left-diag-log" class="diag-log">No events.</div></div>
-        </div>
-
-        <!-- RIGHT -->
-        <div class="device-card right-card">
-            <div class="card-header">
-                <span class="card-title">Right Hand</span>
-                <div class="conn-status-wrap">
-                    <span id="right-conn-status" class="conn-status">Disconnected</span>
-                    <span id="right-calib-badge" class="calib-badge">Not calibrated</span>
-                </div>
-            </div>
-            <div class="severity-block">
-                <div id="right-sev" class="severity-number">--</div>
-                <div class="severity-meta">
-                    <span id="right-label" class="status-label">--</span>
-                    <span class="peak-label">Peak: <span id="right-peak">--</span></span>
-                </div>
-            </div>
-            <div class="bar-track"><div id="right-bar" class="bar-fill"></div></div>
-            <div class="telemetry">
-                <div class="telem-cell"><div class="telem-key">Freq</div><div id="right-hz" class="telem-val">--</div></div>
-                <div class="telem-cell"><div class="telem-key">Motor</div><div id="right-motor" class="telem-val" style="color:var(--muted)">IDLE</div></div>
-                <div class="telem-cell"><div class="telem-key">Fs</div><div id="right-fs" class="telem-val">--</div></div>
-            </div>
-            <button id="right-conn-btn" class="conn-btn" onclick="connectBluetooth('right')">Connect</button>
-            <button class="scan-all-btn" onclick="connectBluetooth('right',true)">⊕ Scan all BLE devices</button>
-            <button class="debug-toggle" onclick="toggleDebug('right')">▾ Feature Debug Panel</button>
-            <div id="right-debug-panel" class="debug-panel">
-                <div class="debug-section-label">Calibration bias</div>
-                <div id="right-debug-bias" class="debug-bias">Hold still on connect — first 50 samples</div>
-                <div class="debug-section-label">Live features &amp; inference</div>
-                <div id="right-debug-features" class="debug-mono">Waiting for 128 samples…</div>
-            </div>
-            <button class="diag-toggle" onclick="toggleDiag('right')">▾ BLE log</button>
-            <div id="right-diag" class="diag-panel"><div id="right-diag-log" class="diag-log">No events.</div></div>
-        </div>
-
+    <!-- TAB BAR -->
+    <div class="tab-bar">
+        <button id="tab-researcher" class="tab-btn tab-active" onclick="switchTab('researcher')">
+            Researcher
+        </button>
+        <button id="tab-participant" class="tab-btn" onclick="switchTab('participant')">
+            Participant Feedback
+        </button>
     </div>
 
-    <!-- MOTION ASSESSMENT / FEEDBACK -->
-    <div class="section-card">
-        <div class="section-title">Motion Assessment / Feedback</div>
+    <!-- ═══════════════════════════════════════════════════════
+         RESEARCHER PANE
+    ═══════════════════════════════════════════════════════ -->
+    <div id="pane-researcher">
 
-        <!-- PARTICIPANT INFO -->
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px;">
-            <div>
-                <div class="name-label">Participant ID</div>
-                <input type="text" id="participant-id" placeholder="e.g. 04-68-Male" style="width:100%;">
-            </div>
-            <div>
-                <div class="name-label">Clinical Diagnosis</div>
-                <select id="diagnosis-select" style="width:100%;">
-                    <option value="TREMOR">Tremor</option>
-                    <option value="VOLUNTARY">Voluntary (Non-Tremor)</option>
-                </select>
-            </div>
-        </div>
+        <!-- DEVICE CARDS -->
+        <div class="device-grid">
 
-        <!-- PROTOCOL STEPS -->
-        <div id="protocol-steps" style="margin-bottom:14px;">
-            <div class="name-label" style="margin-bottom:8px;">Protocol Step</div>
-            <div style="display:flex;flex-direction:column;gap:6px;">
-                <div id="step-indicator" style="font-family:var(--disp);font-size:13px;font-weight:700;color:var(--accent);letter-spacing:1px;">
-                    Ready — awaiting calibration
+            <!-- LEFT -->
+            <div class="device-card left-card">
+                <div class="card-header">
+                    <span class="card-title">Left Hand</span>
+                    <div class="conn-status-wrap">
+                        <span id="left-conn-status" class="conn-status">Disconnected</span>
+                        <span id="left-calib-badge" class="calib-badge">Not calibrated</span>
+                    </div>
                 </div>
-                <div id="step-description" style="font-size:11px;color:var(--muted);line-height:1.6;">
-                    Connect both Arduinos, then hold hand perfectly still for IMU calibration before each position.
+                <div class="severity-block">
+                    <div id="left-sev" class="severity-number">--</div>
+                    <div class="severity-meta">
+                        <span id="left-label" class="status-label">--</span>
+                        <span class="peak-label">Peak: <span id="left-peak">--</span></span>
+                    </div>
+                </div>
+                <div class="bar-track"><div id="left-bar" class="bar-fill"></div></div>
+                <div class="telemetry">
+                    <div class="telem-cell"><div class="telem-key">Freq</div><div id="left-hz" class="telem-val">--</div></div>
+                    <div class="telem-cell"><div class="telem-key">Motor</div><div id="left-motor" class="telem-val" style="color:var(--muted)">IDLE</div></div>
+                    <div class="telem-cell"><div class="telem-key">Fs</div><div id="left-fs" class="telem-val">--</div></div>
+                </div>
+                <button id="left-conn-btn" class="conn-btn" onclick="connectBluetooth('left')">Connect</button>
+                <button class="scan-all-btn" onclick="connectBluetooth('left',true)">⊕ Scan all BLE devices</button>
+                <button class="debug-toggle" onclick="toggleDebug('left')">▾ Feature Debug Panel</button>
+                <div id="left-debug-panel" class="debug-panel" style="display:none;">
+                    <div class="debug-section-label">Calibration bias</div>
+                    <div id="left-debug-bias" class="debug-bias">Hold still — first 50 samples</div>
+                    <div class="debug-section-label">Live features &amp; inference</div>
+                    <div id="left-debug-features" class="debug-mono">Waiting for 128 samples…</div>
+                </div>
+                <button class="diag-toggle" onclick="toggleDiag('left')">▾ BLE log</button>
+                <div id="left-diag" class="diag-panel"><div id="left-diag-log" class="diag-log">No events.</div></div>
+            </div>
+
+            <!-- RIGHT -->
+            <div class="device-card right-card">
+                <div class="card-header">
+                    <span class="card-title">Right Hand</span>
+                    <div class="conn-status-wrap">
+                        <span id="right-conn-status" class="conn-status">Disconnected</span>
+                        <span id="right-calib-badge" class="calib-badge">Not calibrated</span>
+                    </div>
+                </div>
+                <div class="severity-block">
+                    <div id="right-sev" class="severity-number">--</div>
+                    <div class="severity-meta">
+                        <span id="right-label" class="status-label">--</span>
+                        <span class="peak-label">Peak: <span id="right-peak">--</span></span>
+                    </div>
+                </div>
+                <div class="bar-track"><div id="right-bar" class="bar-fill"></div></div>
+                <div class="telemetry">
+                    <div class="telem-cell"><div class="telem-key">Freq</div><div id="right-hz" class="telem-val">--</div></div>
+                    <div class="telem-cell"><div class="telem-key">Motor</div><div id="right-motor" class="telem-val" style="color:var(--muted)">IDLE</div></div>
+                    <div class="telem-cell"><div class="telem-key">Fs</div><div id="right-fs" class="telem-val">--</div></div>
+                </div>
+                <button id="right-conn-btn" class="conn-btn" onclick="connectBluetooth('right')">Connect</button>
+                <button class="scan-all-btn" onclick="connectBluetooth('right',true)">⊕ Scan all BLE devices</button>
+                <button class="debug-toggle" onclick="toggleDebug('right')">▾ Feature Debug Panel</button>
+                <div id="right-debug-panel" class="debug-panel" style="display:none;">
+                    <div class="debug-section-label">Calibration bias</div>
+                    <div id="right-debug-bias" class="debug-bias">Hold still — first 50 samples</div>
+                    <div class="debug-section-label">Live features &amp; inference</div>
+                    <div id="right-debug-features" class="debug-mono">Waiting for 128 samples…</div>
+                </div>
+                <button class="diag-toggle" onclick="toggleDiag('right')">▾ BLE log</button>
+                <div id="right-diag" class="diag-panel"><div id="right-diag-log" class="diag-log">No events.</div></div>
+            </div>
+
+        </div>
+
+        <!-- MOTION ASSESSMENT -->
+        <div class="section-card">
+            <div class="section-title">Motion Assessment / Feedback</div>
+
+            <!-- SESSION SETUP -->
+            <div id="session-setup">
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px;">
+                    <div>
+                        <div class="name-label">Participant ID</div>
+                        <input type="text" id="participant-id" placeholder="e.g. 04-68-Male" style="width:100%;">
+                    </div>
+                    <div>
+                        <div class="name-label">Clinical Diagnosis</div>
+                        <select id="diagnosis-select">
+                            <option value="TREMOR">Tremor</option>
+                            <option value="VOLUNTARY">Voluntary (Non-Tremor)</option>
+                        </select>
+                    </div>
+                </div>
+                <div style="margin-bottom:14px;">
+                    <button class="diag-toggle" onclick="toggleProtocol()" style="color:var(--muted);">▾ Protocol checklist (steps 1–18)</button>
+                    <div id="protocol-panel" style="display:none;margin-top:8px;background:var(--panel);border:1px solid var(--border);border-radius:8px;padding:12px 14px;">
+                        <div style="font-size:10px;color:var(--muted);line-height:2.1;font-family:var(--mono);">
+                            <span style="color:var(--accent);">[1]</span> Informed consent signed (parental if minor)<br>
+                            <span style="color:var(--accent);">[2]</span> Full procedure briefing given<br>
+                            <span style="color:var(--accent);">[3]</span> Glove donned on dominant hand (pinky in thumb slot if left-handed)<br>
+                            <span style="color:var(--accent);">[4]</span> Battery pack secured to arm · Arduino connected<br>
+                            <span style="color:var(--accent);">[5]</span> ID, age, gender, diagnosis entered above<br>
+                            <span style="color:var(--accent);">[6]</span> Participant seated · forearm rested on stable table<br>
+                            <span style="color:var(--accent);">[7]</span> Hand held still → IMU calibration<br>
+                            <span style="color:var(--accent);">[8]</span> <strong style="color:var(--text);">Position 1</strong> — Still on table · 40s<br>
+                            <span style="color:var(--accent);">[9]</span> Repeat calibration [7]<br>
+                            <span style="color:var(--accent);">[10]</span> Transition within 10s of calibration<br>
+                            <span style="color:var(--accent);">[11]</span> <strong style="color:var(--text);">Position 2</strong> — Hover forearm above knee · 40s<br>
+                            <span style="color:var(--accent);">[12]</span> Repeat [7] and [10]<br>
+                            <span style="color:var(--accent);">[13]</span> <strong style="color:var(--text);">Position 3</strong> — Spoon to mouth · 40s<br>
+                            <span style="color:var(--accent);">[14]</span> Repeat [7] and [10]<br>
+                            <span style="color:var(--accent);">[15]</span> <strong style="color:var(--text);">Position 4</strong> — Point above shoulder · 40s<br>
+                            <span style="color:var(--accent);">[16]</span> Battery pack removed · Arduino disconnected<br>
+                            <span style="color:var(--accent);">[17]</span> Glove removed<br>
+                            <span style="color:var(--accent);">[18]</span> Final TremorPause Auditor report delivered
+                        </div>
+                    </div>
+                </div>
+                <button class="action-btn btn-record" onclick="startSession()" style="width:100%;">Begin Session — 4 Positions × 40s</button>
+            </div>
+
+            <!-- SESSION RECORDING -->
+            <div id="session-recording" style="display:none;">
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
+                    <div id="pos-dots" class="pos-dots"></div>
+                    <span id="pos-counter" style="font-size:11px;color:var(--muted);"></span>
+                </div>
+                <div id="pos-label" class="pos-title"></div>
+                <div id="pos-desc"  class="pos-desc"></div>
+                <button id="record-btn" class="action-btn btn-record" onclick="startPositionRecording()" style="width:100%;margin-bottom:10px;">Start 40s Recording</button>
+                <div id="countdown" class="countdown"></div>
+                <div style="margin-top:12px;">
+                    <button class="action-btn btn-muted" onclick="resetSession()" style="width:100%;">↩ Restart Session</button>
+                </div>
+            </div>
+
+            <!-- REPORT SECTION -->
+            <div id="report-section" style="display:none;margin-top:14px;">
+                <div id="report-summary" style="font-size:11px;color:var(--muted);padding:10px 14px;background:var(--panel);border-radius:8px;border:1px solid var(--border);margin-bottom:12px;line-height:1.7;"></div>
+                <div style="display:flex;gap:8px;flex-wrap:wrap;">
+                    <button class="action-btn btn-green" onclick="generateReport()" style="flex:2;">Generate Auditor Report</button>
+                    <button class="action-btn btn-muted" onclick="downloadAllCSVs()" style="flex:1;">Download CSVs</button>
+                    <button class="action-btn btn-muted" onclick="resetSession()" style="flex:1;">New Session</button>
                 </div>
             </div>
         </div>
 
-        <!-- POSITION SELECT + RECORD -->
-        <div class="assess-row">
-            <select id="position-select">
-                <option value="Still">Position 1 — Still (hand on table)</option>
-                <option value="Hover">Position 2 — Hover (forearm above knee)</option>
-                <option value="Spoon">Position 3 — Spoon (to mouth, elbow out)</option>
-                <option value="Point">Position 4 — Point (arm out above shoulder)</option>
-            </select>
-            <button id="record-btn" class="action-btn btn-record" onclick="startAssessment()">Start 100s Recording</button>
-        </div>
+    </div><!-- end pane-researcher -->
 
-        <div id="countdown" class="countdown"></div>
+    <!-- ═══════════════════════════════════════════════════════
+         PARTICIPANT PANE
+    ═══════════════════════════════════════════════════════ -->
+    <div id="pane-participant" style="display:none;">
 
-        <!-- PROTOCOL CHECKLIST (collapsed, researcher reference) -->
-        <div style="margin-top:10px;">
-            <button class="diag-toggle" onclick="toggleProtocol()" style="color:var(--muted);">▾ Protocol checklist</button>
-            <div id="protocol-panel" style="display:none;margin-top:8px;background:var(--panel);border:1px solid var(--border);border-radius:8px;padding:12px 14px;">
-                <div style="font-size:10px;color:var(--muted);line-height:2;font-family:var(--mono);">
-                    <span style="color:var(--accent);">[1]</span> Informed consent signed (parental if minor)<br>
-                    <span style="color:var(--accent);">[2]</span> Full procedure briefing given<br>
-                    <span style="color:var(--accent);">[3]</span> Glove donned on dominant hand (pinky in thumb slot if left-handed)<br>
-                    <span style="color:var(--accent);">[4]</span> Battery pack secured to arm · Arduino connected<br>
-                    <span style="color:var(--accent);">[5]</span> ID, age, gender, diagnosis recorded above<br>
-                    <span style="color:var(--accent);">[6]</span> Participant seated · forearm rested on stable table<br>
-                    <span style="color:var(--accent);">[7]</span> Hand held still → IMU calibration<br>
-                    <span style="color:var(--accent);">[8]</span> <strong>Position 1</strong> — Still on table · 100s recording<br>
-                    <span style="color:var(--accent);">[9]</span> Repeat calibration [7]<br>
-                    <span style="color:var(--accent);">[10]</span> Transition to next position within 10s of calibration<br>
-                    <span style="color:var(--accent);">[11]</span> <strong>Position 2</strong> — Hover forearm above knee (elbow unlocked) · 100s<br>
-                    <span style="color:var(--accent);">[12]</span> Repeat [7] and [10]<br>
-                    <span style="color:var(--accent);">[13]</span> <strong>Position 3</strong> — Spoon to mouth (elbow out) · 100s<br>
-                    <span style="color:var(--accent);">[14]</span> Repeat [7] and [10]<br>
-                    <span style="color:var(--accent);">[15]</span> <strong>Position 4</strong> — Point arm outward above shoulder · 100s<br>
-                    <span style="color:var(--accent);">[16]</span> Battery pack removed · Arduino disconnected<br>
-                    <span style="color:var(--accent);">[17]</span> Glove removed<br>
-                    <span style="color:var(--accent);">[18]</span> Final TremorPause Auditor report delivered
+        <div class="participant-card">
+            <div class="section-title">Participant Feedback Session</div>
+
+            <!-- P-SETUP -->
+            <div id="p-setup">
+                <div style="background:#0a0f1a;border:1px solid #1a2840;border-radius:10px;padding:16px;margin-bottom:16px;font-size:12px;color:#5a7a9a;line-height:1.8;">
+                    <strong style="color:#8aaad0;display:block;margin-bottom:8px;">Welcome to TremorPause</strong>
+                    This session will measure your hand motion across four short positions (40 seconds each).
+                    You will receive a personal report at the end.<br><br>
+                    <strong style="color:#8aaad0;">What you'll need:</strong> The TremorPause glove fitted on your dominant hand,
+                    and the Arduino connected and calibrated by the researcher.<br><br>
+                    <strong style="color:#8aaad0;">Important:</strong> Hold your hand still whenever the screen says "Calibrating"
+                    before each position.
+                </div>
+
+                <div style="margin-bottom:14px;">
+                    <div class="name-label">Your age and sex (optional, for research purposes)</div>
+                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:4px;">
+                        <input type="text" id="p-age" placeholder="Age (e.g. 34)" style="width:100%;">
+                        <select id="p-sex">
+                            <option value="">Prefer not to say</option>
+                            <option value="Male">Male</option>
+                            <option value="Female">Female</option>
+                            <option value="Non-binary">Non-binary</option>
+                            <option value="Other">Other</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div style="margin-bottom:16px;">
+                    <div class="name-label">Do you have a diagnosed tremor condition?</div>
+                    <select id="p-diagnosis-select" style="margin-top:4px;">
+                        <option value="VOLUNTARY">No — I do not have a diagnosed tremor</option>
+                        <option value="TREMOR">Yes — I have a diagnosed tremor condition</option>
+                    </select>
+                </div>
+
+                <!-- STEP-BY-STEP INSTRUCTIONS -->
+                <div style="background:#0a0f1a;border:1px solid #1a2840;border-radius:10px;padding:14px;margin-bottom:16px;">
+                    <div style="font-size:10px;color:#4a6080;text-transform:uppercase;letter-spacing:1.5px;margin-bottom:10px;">What will happen</div>
+                    <div style="display:flex;flex-direction:column;gap:8px;">
+                        <div style="display:flex;gap:12px;align-items:flex-start;font-size:12px;color:#8aaad0;">
+                            <span style="color:#00c2ff;font-weight:700;min-width:20px;">1</span>
+                            <span>Researcher calibrates the sensor — hold your hand still for a few seconds</span>
+                        </div>
+                        <div style="display:flex;gap:12px;align-items:flex-start;font-size:12px;color:#8aaad0;">
+                            <span style="color:#00c2ff;font-weight:700;min-width:20px;">2</span>
+                            <span>You hold four different hand positions for 40 seconds each</span>
+                        </div>
+                        <div style="display:flex;gap:12px;align-items:flex-start;font-size:12px;color:#8aaad0;">
+                            <span style="color:#00c2ff;font-weight:700;min-width:20px;">3</span>
+                            <span>The app guides you through each position with clear instructions</span>
+                        </div>
+                        <div style="display:flex;gap:12px;align-items:flex-start;font-size:12px;color:#8aaad0;">
+                            <span style="color:#00c2ff;font-weight:700;min-width:20px;">4</span>
+                            <span>You receive a personal motion report when all four positions are complete</span>
+                        </div>
+                    </div>
+                </div>
+
+                <button class="action-btn btn-purple" onclick="startParticipantSession()" style="width:100%;">Start My Session</button>
+            </div>
+
+            <!-- P-RECORDING -->
+            <div id="p-recording" style="display:none;">
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+                    <div id="p-pos-dots" class="pos-dots"></div>
+                    <span id="p-pos-counter" style="font-size:11px;color:var(--muted);"></span>
+                </div>
+                <div id="p-pos-label" style="font-family:var(--disp);font-size:18px;font-weight:800;color:#bf00ff;margin-bottom:8px;"></div>
+                <div id="p-pos-instruction" style="font-size:13px;color:var(--muted);margin-bottom:16px;line-height:1.7;background:var(--panel);border-radius:8px;padding:12px 14px;border:1px solid var(--border);"></div>
+                <button id="p-record-btn" class="action-btn btn-purple" onclick="startParticipantRecording()" style="width:100%;margin-bottom:10px;">Start Recording</button>
+                <div id="p-countdown" class="countdown"></div>
+                <div style="margin-top:12px;">
+                    <button class="action-btn btn-muted" onclick="resetParticipantSession()" style="width:100%;">↩ Start Over</button>
+                </div>
+            </div>
+
+            <!-- P-REPORT SECTION -->
+            <div id="p-report-section" style="display:none;margin-top:14px;">
+                <div style="font-size:13px;color:var(--text);padding:12px 14px;background:var(--panel);border-radius:8px;border:1px solid var(--border);margin-bottom:14px;line-height:1.7;">
+                    All four positions recorded. Your personal report is ready.
+                </div>
+
+                <!-- CONSENT -->
+                <div class="consent-box">
+                    <strong>Share your data with the TremorPause research dataset?</strong>
+                    Your motion data (anonymised, no personal details) would be added to the TremorPause
+                    training dataset to help improve tremor detection for future participants.
+                    You will receive the same personal report either way. This is entirely optional.
+                    <div class="consent-check-row">
+                        <input type="checkbox" id="p-consent-check">
+                        <label for="p-consent-check" style="font-size:12px;color:#8aaad0;cursor:pointer;">
+                            Yes, I consent to sharing my anonymised motion data for research purposes.
+                        </label>
+                    </div>
+                </div>
+
+                <div style="display:flex;gap:8px;flex-wrap:wrap;">
+                    <button class="action-btn btn-purple" onclick="submitAndGenerateReport()" style="flex:2;">
+                        Get My Report
+                    </button>
+                    <button class="action-btn btn-muted" onclick="resetParticipantSession()" style="flex:1;">
+                        Start Over
+                    </button>
                 </div>
             </div>
         </div>
 
-        <div id="report-section" style="display:none;margin-top:10px;">
-            <div id="summary-text"></div>
-            <button class="action-btn btn-download" onclick="downloadReport()" style="margin-top:8px;">Download CSV Report</button>
-        </div>
-    </div>
+    </div><!-- end pane-participant -->
 
     <!-- SETTINGS -->
     <div class="section-card">
         <div class="section-title">Settings</div>
+
         <div class="settings-row">
             <div class="settings-label">
                 <strong>Sigmoid Frequency Threshold (ft)</strong>
-                Default = 9.32 Hz — computed from your full 240-file training dataset.
-                Only change if you retrain the model.
+                Default = 9.32 Hz — computed from your 240-file training dataset.
             </div>
             <input type="number" id="freq-input" min="0.1" max="20" step="0.001" value="9.32">
             <button class="apply-btn" onclick="applySettings()">Apply</button>
         </div>
         <div class="threshold-display">Active: <span id="threshold-display">9.3200 Hz</span></div>
+
         <div class="name-grid" style="margin-top:16px;">
             <div>
-                <div class="name-label">LEFT Arduino BLE name (from BLE.setLocalName in sketch)</div>
-                <input type="text" id="left-name-input" placeholder="e.g. TREMOR-LEFT">
+                <div class="name-label">LEFT Arduino BLE name</div>
+                <input type="text" id="left-name-input" value="Left-TremorPause">
             </div>
             <div>
                 <div class="name-label">RIGHT Arduino BLE name</div>
-                <input type="text" id="right-name-input" value="TREMOR-PRO-X1">
+                <input type="text" id="right-name-input" value="Right-TremorPause">
+            </div>
+        </div>
+
+        <!-- FIREBASE CONFIG -->
+        <div style="margin-top:20px;padding-top:14px;border-top:1px solid var(--border);">
+            <div class="settings-label" style="margin-bottom:8px;">
+                <strong>Firebase Cloud Config</strong>
+                Paste your Firebase project config JSON here to enable cloud data sharing.
+                <a href="https://console.firebase.google.com" target="_blank" style="color:var(--accent);">console.firebase.google.com</a>
+            </div>
+            <textarea id="firebase-config-input" placeholder='{"apiKey":"...","authDomain":"...","projectId":"...","storageBucket":"...","messagingSenderId":"...","appId":"..."}'></textarea>
+            <div style="display:flex;align-items:center;gap:10px;margin-top:8px;">
+                <button class="apply-btn" onclick="saveFirebaseConfig()">Connect Firebase</button>
+                <span id="firebase-status" style="font-size:11px;color:var(--muted);">Not connected</span>
             </div>
         </div>
     </div>
