@@ -28,8 +28,8 @@ const DEVICEMAP = {
         motor:   'abcdef02-1234-5678-1234-56789abcdef0'
     },
     right: {
-        service: '19b10000-e8f2-537e-4f6c-d104768a1214',
-        char:    '19b10001-e8f2-537e-4f6c-d104768a1214',
+        service: '12345678-1234-5678-1234-56789abcdef0',
+        char:    'abcdef01-1234-5678-1234-56789abcdef0',
         motor:   null
     }
 };
