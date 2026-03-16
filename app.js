@@ -13,7 +13,7 @@ let freqThreshold   = DEFAULT_FT;
 
 const POSITIONS = [
     { key: 'Still', label: 'Position 1 — Still',  desc: 'Hand flat on table, forearm rested.' },
-    { key: 'Hover', label: 'Position 2 — Hover',  desc: 'Forearm hovering above knee, elbow unlocked.' },
+    { key: 'Hold',  label: 'Position 2 — Hold',   desc: 'Forearm held above knee, elbow unlocked.' },
     { key: 'Spoon', label: 'Position 3 — Spoon',  desc: 'Hold spoon to mouth, elbow out.' },
     { key: 'Point', label: 'Position 4 — Point',  desc: 'Arm pointed outward above shoulder level.' }
 ];
@@ -974,25 +974,25 @@ async function fetchPopulationAverages() {
 const P_POSITIONS = [
     {
         key:         'Still',
-        stepLabel:   'Step 3 of 5',
+        label:       'Position 1 — Rest',
         title:       'Position 1 — Rest',
         instruction: 'Place your forearm flat on the table with your hand relaxed and still. Do not move for 40 seconds.'
     },
     {
-        key:         'Hover',
-        stepLabel:   'Step 3 of 5',
-        title:       'Position 2 — Hover',
+        key:         'Hold',
+        label:       'Position 2 — Hold',
+        title:       'Position 2 — Hold',
         instruction: 'Lift your forearm and hold it just above your knee. Keep your elbow slightly bent. Do not rest it on anything for 40 seconds.'
     },
     {
         key:         'Spoon',
-        stepLabel:   'Step 3 of 5',
+        label:       'Position 3 — Spoon',
         title:       'Position 3 — Spoon',
         instruction: 'Raise your hand up toward your mouth as if holding a spoon. Point your elbow outward. Hold still for 40 seconds.'
     },
     {
         key:         'Point',
-        stepLabel:   'Step 3 of 5',
+        label:       'Position 4 — Reach Out',
         title:       'Position 4 — Reach Out',
         instruction: 'Stretch your arm straight out in front of you, raised above shoulder height. Hold still for 40 seconds.'
     }
@@ -1476,9 +1476,26 @@ Plotly.newPlot('charts', fig.data, fig.layout);
 <\/script>
 </body></html>`;
 
-    const blob = new Blob([reportHTML], { type: 'text/html' });
-    const url  = URL.createObjectURL(blob);
-    window.open(url, '_blank');
-    setTimeout(() => URL.revokeObjectURL(url), 120000);
+    // Render report inline in the app instead of new tab
+    const reportEl = document.getElementById('p-inline-report');
+    if (reportEl) {
+        reportEl.innerHTML = '';
+        const iframe = document.createElement('iframe');
+        iframe.style.cssText = 'width:100%;border:none;border-radius:16px;min-height:600px;background:#0b0e14;';
+        iframe.srcdoc = reportHTML;
+        reportEl.appendChild(iframe);
+        reportEl.style.display = 'block';
+        // Auto-resize iframe to content height
+        iframe.onload = () => {
+            try {
+                iframe.style.height = iframe.contentDocument.body.scrollHeight + 40 + 'px';
+            } catch(e) { iframe.style.height = '800px'; }
+        };
+    }
+    // Scroll to report
+    setTimeout(() => {
+        const el = document.getElementById('p-inline-report');
+        if (el) el.scrollIntoView({ behavior: 'smooth' });
+    }, 300);
 }
 
