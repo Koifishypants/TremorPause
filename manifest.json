@@ -1,0 +1,8 @@
+{
+  "name": "TremorPause",
+  "short_name": "TremorPause",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0a0a0a",
+  "theme_color": "#00c2ff"
+}
