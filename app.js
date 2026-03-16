@@ -813,8 +813,15 @@ window.addEventListener('DOMContentLoaded', () => {
     document.getElementById('threshold-display').textContent = `${freqThreshold.toFixed(4)} Hz`;
     document.getElementById('left-name-input').value  = deviceNames.left;
     document.getElementById('right-name-input').value = deviceNames.right;
-    // Auto-initialize Firebase with hardcoded config
-    initFirebase(FIREBASE_CONFIG);
+    // Auto-initialize Firebase — retry if SDK not yet loaded
+    const tryFirebase = () => {
+        if (typeof firebase !== 'undefined') {
+            initFirebase(FIREBASE_CONFIG);
+        } else {
+            setTimeout(tryFirebase, 500);
+        }
+    };
+    tryFirebase();
     const cfgEl = document.getElementById('firebase-config-input');
     if (cfgEl) cfgEl.value = JSON.stringify(FIREBASE_CONFIG, null, 2);
 });
