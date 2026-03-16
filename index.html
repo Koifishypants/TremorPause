@@ -4,7 +4,6 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>TremorPause AI</title>
-    <link rel="manifest" href="manifest.json">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Syne:wght@600;700;800&display=swap" rel="stylesheet">
     <style>
@@ -204,45 +203,81 @@
 
     </div>
 
-    <!-- WHAT THE MODEL NEEDS (from training data analysis) -->
-    <div class="section-card" style="border-color:#1a3010;">
-        <div class="section-title" style="color:#3a6030;">How This Model Works — Verified from Your Training Data</div>
-        <div class="info-box">
-            <strong>Arduino sends gyroscope data in degrees/sec (dps)</strong>
-            Confirmed from <code>sketch_jan11a.ino</code>: <code>IMU.readGyroscope()</code> via
-            <code>Arduino_LSM6DSOX</code> outputs directly in dps. Training data was collected
-            with the exact same sketch, so no unit conversion is needed — values are identical
-            to what Python received.<br><br>
-
-            <strong>Severity formula (identical to tremorpredictorv4.py):</strong><br>
-            <code>freq_weight = 1 / (1 + exp(-1.0 × (hz − ft)))</code><br>
-            <code>severity = raw_prob × freq_weight × 100</code><br>
-            <code>ft = 9.32 Hz</code> from your full 240-file dataset.<br><br>
-
-            <strong>Why live energy is low (5–20) vs training median (787):</strong>
-            Training patients (ages 72–75, diagnosed tremor) had gyro oscillations of ~2–5 dps.
-            A mild voluntary tremor produces only ~0.2–0.4 dps — about 10× weaker.
-            To cross the model's root split (energy &gt; 622), you need ~2.2 dps mean gyro magnitude.
-            This is a training data coverage issue: the model needs more low-amplitude tremor examples.
-        </div>
-    </div>
-
-    <!-- CLINICAL ASSESSMENT -->
+    <!-- MOTION ASSESSMENT / FEEDBACK -->
     <div class="section-card">
-        <div class="section-title">Clinical Assessment</div>
+        <div class="section-title">Motion Assessment / Feedback</div>
+
+        <!-- PARTICIPANT INFO -->
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px;">
+            <div>
+                <div class="name-label">Participant ID</div>
+                <input type="text" id="participant-id" placeholder="e.g. 04-68-Male" style="width:100%;">
+            </div>
+            <div>
+                <div class="name-label">Clinical Diagnosis</div>
+                <select id="diagnosis-select" style="width:100%;">
+                    <option value="TREMOR">Tremor</option>
+                    <option value="VOLUNTARY">Voluntary (Non-Tremor)</option>
+                </select>
+            </div>
+        </div>
+
+        <!-- PROTOCOL STEPS -->
+        <div id="protocol-steps" style="margin-bottom:14px;">
+            <div class="name-label" style="margin-bottom:8px;">Protocol Step</div>
+            <div style="display:flex;flex-direction:column;gap:6px;">
+                <div id="step-indicator" style="font-family:var(--disp);font-size:13px;font-weight:700;color:var(--accent);letter-spacing:1px;">
+                    Ready — awaiting calibration
+                </div>
+                <div id="step-description" style="font-size:11px;color:var(--muted);line-height:1.6;">
+                    Connect both Arduinos, then hold hand perfectly still for IMU calibration before each position.
+                </div>
+            </div>
+        </div>
+
+        <!-- POSITION SELECT + RECORD -->
         <div class="assess-row">
             <select id="position-select">
-                <option value="Resting">Resting (hand on lap)</option>
-                <option value="Postural">Postural (arms extended)</option>
-                <option value="Kinetic">Kinetic (finger-to-nose)</option>
-                <option value="Intention">Intention (touching target)</option>
+                <option value="Still">Position 1 — Still (hand on table)</option>
+                <option value="Hover">Position 2 — Hover (forearm above knee)</option>
+                <option value="Spoon">Position 3 — Spoon (to mouth, elbow out)</option>
+                <option value="Point">Position 4 — Point (arm out above shoulder)</option>
             </select>
-            <button id="record-btn" class="action-btn btn-record" onclick="startAssessment()">Start 10s Recording</button>
+            <button id="record-btn" class="action-btn btn-record" onclick="startAssessment()">Start 100s Recording</button>
         </div>
+
         <div id="countdown" class="countdown"></div>
-        <div id="report-section">
+
+        <!-- PROTOCOL CHECKLIST (collapsed, researcher reference) -->
+        <div style="margin-top:10px;">
+            <button class="diag-toggle" onclick="toggleProtocol()" style="color:var(--muted);">▾ Protocol checklist</button>
+            <div id="protocol-panel" style="display:none;margin-top:8px;background:var(--panel);border:1px solid var(--border);border-radius:8px;padding:12px 14px;">
+                <div style="font-size:10px;color:var(--muted);line-height:2;font-family:var(--mono);">
+                    <span style="color:var(--accent);">[1]</span> Informed consent signed (parental if minor)<br>
+                    <span style="color:var(--accent);">[2]</span> Full procedure briefing given<br>
+                    <span style="color:var(--accent);">[3]</span> Glove donned on dominant hand (pinky in thumb slot if left-handed)<br>
+                    <span style="color:var(--accent);">[4]</span> Battery pack secured to arm · Arduino connected<br>
+                    <span style="color:var(--accent);">[5]</span> ID, age, gender, diagnosis recorded above<br>
+                    <span style="color:var(--accent);">[6]</span> Participant seated · forearm rested on stable table<br>
+                    <span style="color:var(--accent);">[7]</span> Hand held still → IMU calibration<br>
+                    <span style="color:var(--accent);">[8]</span> <strong>Position 1</strong> — Still on table · 100s recording<br>
+                    <span style="color:var(--accent);">[9]</span> Repeat calibration [7]<br>
+                    <span style="color:var(--accent);">[10]</span> Transition to next position within 10s of calibration<br>
+                    <span style="color:var(--accent);">[11]</span> <strong>Position 2</strong> — Hover forearm above knee (elbow unlocked) · 100s<br>
+                    <span style="color:var(--accent);">[12]</span> Repeat [7] and [10]<br>
+                    <span style="color:var(--accent);">[13]</span> <strong>Position 3</strong> — Spoon to mouth (elbow out) · 100s<br>
+                    <span style="color:var(--accent);">[14]</span> Repeat [7] and [10]<br>
+                    <span style="color:var(--accent);">[15]</span> <strong>Position 4</strong> — Point arm outward above shoulder · 100s<br>
+                    <span style="color:var(--accent);">[16]</span> Battery pack removed · Arduino disconnected<br>
+                    <span style="color:var(--accent);">[17]</span> Glove removed<br>
+                    <span style="color:var(--accent);">[18]</span> Final TremorPause Auditor report delivered
+                </div>
+            </div>
+        </div>
+
+        <div id="report-section" style="display:none;margin-top:10px;">
             <div id="summary-text"></div>
-            <button class="action-btn btn-download" onclick="downloadReport()">Download CSV Report</button>
+            <button class="action-btn btn-download" onclick="downloadReport()" style="margin-top:8px;">Download CSV Report</button>
         </div>
     </div>
 

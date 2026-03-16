@@ -237,7 +237,11 @@ function handleIMU(event, side) {
 
         if (isRecording) {
             const position = document.getElementById('position-select').value;
+            const participantId = document.getElementById('participant-id')?.value.trim() || 'unknown';
+            const diagnosis    = document.getElementById('diagnosis-select')?.value || 'UNKNOWN';
             sessionData.push({
+                participant_id: participantId,
+                diagnosis,
                 side, timestamp: now, position,
                 severity:       severity.toFixed(2),
                 mean_mag:       featureArray[0].toFixed(4),
@@ -351,7 +355,7 @@ function startAssessment() {
     const cd  = document.getElementById('countdown');
     document.getElementById('report-section').style.display = 'none';
     btn.disabled = true;
-    let rem = 10; cd.textContent = `${rem}s remaining`; cd.style.color = '#ff9500';
+    let rem = 100; cd.textContent = `${rem}s remaining`; cd.style.color = '#ff9500';
     assessmentTimer = setInterval(() => {
         rem--;
         cd.textContent = rem > 0 ? `${rem}s remaining` : 'Finishing…';
@@ -378,7 +382,10 @@ function downloadReport() {
     const csv = Object.keys(sessionData[0]).join(',') + '\n' + sessionData.map(r => Object.values(r).join(',')).join('\n');
     const a = document.createElement('a');
     a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
-    a.download = `TremorPause_${sessionData[0]?.position ?? 'session'}_${Date.now()}.csv`;
+    const pid  = sessionData[0]?.participant_id ?? 'unknown';
+    const diag = sessionData[0]?.diagnosis ?? 'unknown';
+    const pos  = sessionData[0]?.position ?? 'session';
+    a.download = `data_${pid}_${diag}_${Date.now()}.csv`;
     a.click(); URL.revokeObjectURL(a.href);
 }
 
@@ -451,6 +458,11 @@ function updateDebugPanel(side, fa, rawProb, freqWeight, severity, actualFs) {
 
 function toggleDiag(side) {
     const el = document.getElementById(`${side}-diag`);
+    if (el) el.style.display = el.style.display === 'none' ? 'block' : 'none';
+}
+
+function toggleProtocol() {
+    const el = document.getElementById('protocol-panel');
     if (el) el.style.display = el.style.display === 'none' ? 'block' : 'none';
 }
 
