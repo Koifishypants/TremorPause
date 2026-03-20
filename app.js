@@ -41,7 +41,7 @@ const DEVICEMAP = {
     right: {
         service: '12345678-1234-5678-1234-56789abcdef2',
         char:    'abcdef01-1234-5678-1234-56789abcdef2',
-        motor:   null
+        motor:   'abcdef02-1234-5678-1234-56789abcdef2'
     }
 };
 
