@@ -1,7 +1,9 @@
 // ============================================================
-// TremorPause AI — app.js  v6
+// TremorPause AI — app.js  v7
 // 4-position sequential protocol, 40s per position
 // Inline report generation (port of reportv15.py)
+// v7 fix: motor feedback sent on every IMU sample (~50Hz)
+//         instead of once per completed window (~1.6Hz)
 // ============================================================
 
 // ---------- CONSTANTS ----------
@@ -30,7 +32,7 @@ const POSITIONS = [
 ];
 
 const RECORDING_SECONDS = 40;
-const SKIP_INITIAL      = 6;   // skip first N windows (calibration settling), scaled from 15→40s
+const SKIP_INITIAL      = 6;   // skip first N windows (calibration settling)
 
 const DEVICEMAP = {
     left: {
@@ -65,10 +67,9 @@ let isRecording = false;
 let session = {
     participantId: '',
     diagnosis:     'TREMOR',
-    currentPos:    0,           // 0-3
+    currentPos:    0,
     started:       false,
     complete:      false,
-    // positionData[i] = array of window objects for position i
     positionData:  [[], [], [], []]
 };
 
@@ -79,7 +80,8 @@ function makeSideState() {
         rawBuffer: [], timestamps: [],
         calibBuf: [], bias: [0, 0, 0],
         calibrated: false, connected: false,
-        peakSeverity: 0, sampleCount: 0
+        peakSeverity: 0, sampleCount: 0,
+        lastSeverity: 0   // v7: tracks most recent severity for 50Hz motor updates
     };
 }
 const sideState = { left: makeSideState(), right: makeSideState() };
@@ -221,6 +223,9 @@ function handleIMU(event, side) {
     s.rawBuffer.push(xyz);
     s.timestamps.push(now);
 
+    // ── WINDOW INFERENCE ──────────────────────────────────────
+    // Runs once per completed window (every STEP_SIZE=32 samples).
+    // Updates lastSeverity which is used for motor feedback below.
     if (s.rawBuffer.length >= WINDOW_SIZE) {
         const winXYZ  = s.rawBuffer.slice(0, WINDOW_SIZE);
         const winTime = s.timestamps.slice(0, WINDOW_SIZE);
@@ -234,8 +239,10 @@ function handleIMU(event, side) {
         updateDebugPanel(side, featureArray, rawProb, freqWeight, severity, actualFs);
         updateSideUI(side, severity, domFreq, actualFs);
 
+        // v7: store latest severity so every IMU sample can send it to the motor
+        s.lastSeverity = severity;
+
         if (isRecording) {
-            // Route to participant session if in participant mode
             const isParticipantMode = (activeMode === 'participant');
             const posIdx = isParticipantMode ? pSession.currentPos : session.currentPos;
             const targetData = isParticipantMode ? pSession.positionData : session.positionData;
@@ -253,12 +260,21 @@ function handleIMU(event, side) {
                 freq_weight:    parseFloat(freqWeight.toFixed(4)),
                 actual_fs:      parseFloat(actualFs.toFixed(1))
             });
-        } else {
-            sendMotorFeedback(side, severity);
         }
 
         s.rawBuffer  = s.rawBuffer.slice(STEP_SIZE);
         s.timestamps = s.timestamps.slice(STEP_SIZE);
+    }
+
+    // ── MOTOR FEEDBACK — every IMU sample (~50Hz) ─────────────
+    // v7: moved outside the window block so the motor gets a
+    // severity update on every sample, not just once per window.
+    // Uses lastSeverity which holds the most recent inference result.
+    // Falls back to 0 until the first window is computed.
+    // Motor feedback is suppressed during recording so data
+    // collection is not affected.
+    if (!isRecording) {
+        sendMotorFeedback(side, s.lastSeverity);
     }
 }
 
@@ -274,9 +290,6 @@ async function connectBluetooth(side, forceAll = false) {
         const name = deviceNames[side];
         if (name) showToast(`Select "${name}" from the list`);
 
-        // Always use acceptAllDevices
-        // Arduino_LSM6DSOX boards don't always advertise the service UUID.
-        // User picks their device by name from the full list.
         const opts = {
             acceptAllDevices: true,
             optionalServices: [cfg.service]
@@ -365,7 +378,6 @@ function updateProtocolUI() {
     const pos   = POSITIONS[session.currentPos];
     const total = POSITIONS.length;
 
-    // Progress dots
     let dots = '';
     for (let i = 0; i < total; i++) {
         const done    = i < session.currentPos;
@@ -417,7 +429,6 @@ function finishPosition() {
     session.currentPos++;
 
     if (session.currentPos >= POSITIONS.length) {
-        // All 4 positions done
         session.complete = true;
         document.getElementById('record-btn').textContent = 'All positions complete';
         document.getElementById('record-btn').disabled    = true;
@@ -426,7 +437,6 @@ function finishPosition() {
             `Session complete for ${session.participantId} · ${session.diagnosis} · ` +
             POSITIONS.map((p, i) => `${p.key}: ${session.positionData[i].length} windows`).join(' · ');
     } else {
-        // Next position
         setTimeout(() => updateProtocolUI(), 800);
     }
 }
@@ -440,7 +450,7 @@ function resetSession() {
 }
 
 // ============================================================
-// CSV DOWNLOAD (one file per position, matching training format)
+// CSV DOWNLOAD
 // ============================================================
 function downloadAllCSVs() {
     if (!session.complete) return;
@@ -465,7 +475,6 @@ function downloadAllCSVs() {
 
 // ============================================================
 // INLINE REPORT GENERATION (port of reportv15.py)
-// Opens in new tab — requires Plotly CDN
 // ============================================================
 function generateReport() {
     if (!session.complete) return;
@@ -477,17 +486,15 @@ function generateReport() {
     const statusText  = isTremor ? 'TREMOR' : 'CONTROL / NON-TREMOR';
     const ft    = freqThreshold;
 
-    // Build per-position stats (mirrors reportv15.py trial loop, SKIP_INITIAL applied)
     let trialRowsHTML = '';
     let allSev = [], allHz = [], allMag = [], allEngy = [], allVrate = [], allTime = [];
     let subjectPeakSev = 0;
     let subjectAvgSevs = [];
 
     POSITIONS.forEach((pos, i) => {
-        const rows = session.positionData[i].slice(SKIP_INITIAL); // skip first N windows
+        const rows = session.positionData[i].slice(SKIP_INITIAL);
         if (!rows.length) return;
 
-        // Apply report sigmoid (-2.5 steepness, matching reportv15.py)
         const sevs   = rows.map(r => r.raw_prob * sigmoidReport(r.dom_freq_hz, ft) * 100);
         const hzs    = rows.map(r => r.dom_freq_hz);
         const mags   = rows.map(r => r.max_mag);
@@ -525,7 +532,6 @@ function generateReport() {
         ? subjectAvgSevs.reduce((a,b)=>a+b,0) / subjectAvgSevs.length
         : 0;
 
-    // Fatigue drift (linear regression on hz over time, matching reportv15.py)
     let fatigueShift = 0;
     let fatigueB = 0, fatigueM = 0;
     const hzFiltered = allHz.map((h,i) => h > 1.0 ? [allTime[i], h] : null).filter(Boolean);
@@ -537,10 +543,9 @@ function generateReport() {
         const my = ys.reduce((a,b)=>a+b,0)/n;
         fatigueM = xs.reduce((s,x,i) => s+(x-mx)*(ys[i]-my), 0) / xs.reduce((s,x) => s+(x-mx)**2, 0);
         fatigueB = my - fatigueM * mx;
-        fatigueShift = fatigueM * 40; // 40 captures (scaled from 100 in original)
+        fatigueShift = fatigueM * 40;
     }
 
-    // Encode chart data as JSON for inline Plotly
     const chartData = JSON.stringify({
         sev: allSev, hz: allHz, mag: allMag, engy: allEngy,
         time: allTime.slice(0, allSev.length),
@@ -813,7 +818,6 @@ window.addEventListener('DOMContentLoaded', () => {
     document.getElementById('threshold-display').textContent = `${freqThreshold.toFixed(4)} Hz`;
     document.getElementById('left-name-input').value  = deviceNames.left;
     document.getElementById('right-name-input').value = deviceNames.right;
-    // Auto-initialize Firebase — retry if SDK not yet loaded
     const tryFirebase = () => {
         if (typeof firebase !== 'undefined') {
             initFirebase(FIREBASE_CONFIG);
@@ -851,7 +855,6 @@ function initFirebase(config) {
 function saveFirebaseConfig() {
     const raw = document.getElementById('firebase-config-input').value.trim();
     try {
-        // Accept either raw JSON or the full firebaseConfig = {...} assignment
         const cleaned = raw
             .replace(/^.*?firebaseConfig\s*=\s*/, '')
             .replace(/;?\s*$/, '')
@@ -884,7 +887,7 @@ async function uploadToFirestore(sessionId, participantMode, positionData) {
             batch.set(docRef, {
                 session_id:  sessionId,
                 position:    pos.key,
-                mode:        participantMode, // 'participant'
+                mode:        participantMode,
                 diagnosis:   pSession.diagnosis,
                 timestamp:   firebase.firestore.FieldValue.serverTimestamp(),
                 windows:     rows.map(r => ({
@@ -895,7 +898,7 @@ async function uploadToFirestore(sessionId, participantMode, positionData) {
                     dom_freq_hz:    r.dom_freq_hz,
                     vibration_rate: r.vibration_rate,
                     actual_fs:      r.actual_fs,
-                    raw_prob:       r.raw_prob,   // stored for accurate population comparison
+                    raw_prob:       r.raw_prob,
                     label:          pSession.diagnosis === 'TREMOR' ? 1 : 0,
                     ground_truth:   pSession.diagnosis
                 }))
@@ -910,23 +913,17 @@ async function uploadToFirestore(sessionId, participantMode, positionData) {
     }
 }
 
-// Fetch anonymised population averages per position from Firestore.
-// Uses the actual loaded Random Forest model for inference on stored features,
-// giving accurate severity values identical to what the app computes live.
-// Returns { Still:{avg,n}, Hold:{avg,n}, Spoon:{avg,n}, Point:{avg,n}, total:n }
 async function fetchPopulationAverages() {
     if (!db) return null;
     try {
         const snap = await db.collection('tremor_data').limit(1000).get();
         if (snap.empty) return null;
 
-        // Keys = all valid position names (including legacy 'Hover' → normalised to 'Hold')
         const buckets    = { Still: [], Hold: [], Spoon: [], Point: [] };
         const sessionIds = new Set();
 
         snap.forEach(doc => {
             const data = doc.data();
-            // Normalise legacy 'Hover' key to 'Hold'
             const pos = data.position === 'Hover' ? 'Hold' : data.position;
             if (!pos || !buckets[pos] || !data.windows) return;
 
@@ -935,13 +932,10 @@ async function fetchPopulationAverages() {
             data.windows.forEach(w => {
                 if (w.dom_freq_hz === undefined) return;
 
-                // Use stored raw_prob if available (live participant sessions)
-                // Otherwise run the actual model on the stored feature vector
                 let rawProb;
                 if (w.raw_prob != null) {
                     rawProb = w.raw_prob;
                 } else if (model) {
-                    // Run Random Forest inference — same function used for live data
                     const feat = [
                         w.mean_mag       || 0,
                         w.std_mag        || 0,
@@ -952,10 +946,9 @@ async function fetchPopulationAverages() {
                     ];
                     rawProb = predictProba(feat);
                 } else {
-                    return; // model not loaded yet, skip
+                    return;
                 }
 
-                // Sigmoid with -2.5 steepness (matches reportv15.py)
                 const fw  = 1 / (1 + Math.exp(-2.5 * (w.dom_freq_hz - freqThreshold)));
                 buckets[pos].push(rawProb * fw * 100);
             });
@@ -981,7 +974,6 @@ async function fetchPopulationAverages() {
 
 // ============================================================
 // PARTICIPANT SCREEN FLOW
-// Screens: welcome → connect → calibrate → record(x4) → finish
 // ============================================================
 const P_POSITIONS = [
     {
@@ -1012,7 +1004,7 @@ const P_POSITIONS = [
 
 const P_RECORDING_SECONDS = 40;
 const P_SKIP_INITIAL      = 6;
-const P_CALIB_WAIT        = 3; // seconds to wait after "holding still" before starting next position
+const P_CALIB_WAIT        = 3;
 
 let pSession = {
     sessionId:    '',
@@ -1022,22 +1014,19 @@ let pSession = {
     positionData: [[], [], [], []]
 };
 
-// Which side is the participant using (dominant hand)
-let pSide = 'left'; // updated by pSelectHand()
+let pSide = 'left';
 
 function pSelectHand(side) {
     pSide = side;
     const lBtn = document.getElementById('p-hand-left');
     const rBtn = document.getElementById('p-hand-right');
     if (!lBtn || !rBtn) return;
-    // Reset both to unselected
     lBtn.style.background = 'var(--panel)';
     lBtn.style.color      = 'var(--muted)';
     lBtn.style.border     = '1.5px solid var(--border2)';
     rBtn.style.background = 'var(--panel)';
     rBtn.style.color      = 'var(--muted)';
     rBtn.style.border     = '1.5px solid var(--border2)';
-    // Highlight selected
     const active = side === 'left' ? lBtn : rBtn;
     active.style.background = side === 'left' ? 'var(--accent)' : 'var(--purple)';
     active.style.color      = side === 'left' ? '#000' : '#fff';
@@ -1062,7 +1051,6 @@ function pBack(showId, hideId) {
     document.getElementById(showId).style.display  = 'block';
 }
 
-// SCREEN 1 → 2: set diagnosis, determine which hand to connect
 function pGoToConnect() {
     const diag = document.getElementById('p-diagnosis-select').value;
     pSession = {
@@ -1073,7 +1061,6 @@ function pGoToConnect() {
         positionData: [[], [], [], []]
     };
 
-    // Disconnect both researcher-mode connections to avoid interference
     ['left','right'].forEach(side => {
         const s = sideState[side];
         if (s.device?.gatt?.connected) {
@@ -1081,10 +1068,7 @@ function pGoToConnect() {
         }
     });
 
-    // pSide already set by pSelectHand() on the welcome screen
     document.getElementById('p-device-name').textContent = deviceNames[pSide] || 'TremorPause';
-
-    // Reset connect screen state
     document.getElementById('p-connect-btn').style.display    = 'block';
     document.getElementById('p-connect-btn').disabled         = false;
     document.getElementById('p-connect-status').textContent   = '';
@@ -1093,7 +1077,6 @@ function pGoToConnect() {
     pShowScreen('p-screen-connect');
 }
 
-// SCREEN 2: connect the dominant hand Arduino
 async function pConnectDevice() {
     const btn = document.getElementById('p-connect-btn');
     const status = document.getElementById('p-connect-status');
@@ -1103,8 +1086,6 @@ async function pConnectDevice() {
 
     try {
         await connectBluetooth(pSide, true);
-        // connectBluetooth triggers calibration internally
-        // Poll until calibrated
         status.textContent = 'Connecting…';
         const waitForCalib = setInterval(() => {
             const s = sideState[pSide];
@@ -1118,7 +1099,6 @@ async function pConnectDevice() {
                 status.style.color = 'var(--orange)';
             }
         }, 500);
-        // Timeout after 30s
         setTimeout(() => clearInterval(waitForCalib), 30000);
     } catch(e) {
         status.textContent = 'Could not connect. Please try again.';
@@ -1127,36 +1107,30 @@ async function pConnectDevice() {
     }
 }
 
-// SCREEN 2 → 3: go to calibrate before position posIdx
 function pGoToCalibrate(posIdx) {
     pSession.currentPos = posIdx;
-    const stepNum = posIdx + 2; // step 2 = first calib, step 3 = first position, etc.
+    const stepNum = posIdx + 2;
     document.getElementById('p-calib-step-label').textContent = `Step ${stepNum} of 5`;
-
-    // Reset calib screen
     document.getElementById('p-calib-btn').style.display       = 'block';
     document.getElementById('p-calib-btn').disabled            = false;
     document.getElementById('p-calib-countdown').style.display = 'none';
-
     pShowScreen('p-screen-calibrate');
 }
 
 let pCalibTimer = null;
 
-// SCREEN 3: user presses "I'm holding still"
-// Re-trigger calibration on the Arduino side by resetting bias
 function pStartCalibrate() {
     const btn = document.getElementById('p-calib-btn');
     btn.disabled = true;
     btn.style.display = 'none';
 
-    // Force recalibration: clear buffer and reset calibrated flag
     const s = sideState[pSide];
     s.calibrated  = false;
     s.calibBuf    = [];
     s.bias        = [0, 0, 0];
     s.rawBuffer   = [];
     s.timestamps  = [];
+    s.lastSeverity = 0;
 
     document.getElementById('p-calib-countdown').style.display = 'block';
     let rem = P_CALIB_WAIT;
@@ -1167,22 +1141,18 @@ function pStartCalibrate() {
         document.getElementById('p-calib-timer').textContent = rem;
         if (rem <= 0) {
             clearInterval(pCalibTimer);
-            // Go straight to recording screen
             pShowRecordScreen(pSession.currentPos);
         }
     }, 1000);
 }
 
-// SCREEN 3 → 4
 function pShowRecordScreen(posIdx) {
     const pos = P_POSITIONS[posIdx];
-    const stepNum = posIdx + 2;
 
     document.getElementById('p-record-step-label').textContent  = `Position ${posIdx + 1} of 4`;
     document.getElementById('p-record-title').textContent        = pos.title;
     document.getElementById('p-record-instruction').textContent  = pos.instruction;
 
-    // Progress dots
     let dots = '';
     for (let i = 0; i < P_POSITIONS.length; i++) {
         const done   = i < posIdx;
@@ -1193,7 +1163,6 @@ function pShowRecordScreen(posIdx) {
     }
     document.getElementById('p-progress-dots').innerHTML = dots;
 
-    // Reset record screen state
     document.getElementById('p-record-btn').style.display       = 'block';
     document.getElementById('p-record-btn').disabled            = false;
     document.getElementById('p-record-countdown').style.display = 'none';
@@ -1204,7 +1173,6 @@ function pShowRecordScreen(posIdx) {
 
 let pRecordTimer = null;
 
-// SCREEN 4: user presses "Start — I'm in position"
 function pStartRecording() {
     document.getElementById('p-record-btn').style.display       = 'none';
     document.getElementById('p-record-countdown').style.display = 'block';
@@ -1227,11 +1195,9 @@ function pStartRecording() {
 
             const nextPos = pSession.currentPos + 1;
             if (nextPos >= P_POSITIONS.length) {
-                // All done
                 pSession.complete = true;
                 setTimeout(() => pShowScreen('p-screen-finish'), 1500);
             } else {
-                // Next position — show calibrate screen after brief pause
                 setTimeout(() => pGoToCalibrate(nextPos), 1500);
             }
         }
@@ -1254,7 +1220,6 @@ async function submitAndGenerateReport() {
     const consentEl = document.getElementById('p-consent-check');
     const consented = consentEl && consentEl.checked;
 
-    // Show loading state
     const btn = document.querySelector('#p-report-section .btn-purple');
     if (btn) { btn.textContent = 'Generating…'; btn.disabled = true; }
 
@@ -1265,7 +1230,6 @@ async function submitAndGenerateReport() {
         if (uploaded) showToast('Data shared ✓ — fetching comparison…');
     }
 
-    // Fetch population averages for comparison (works even without consent)
     let popAverages = null;
     if (db) {
         popAverages = await fetchPopulationAverages();
@@ -1276,7 +1240,7 @@ async function submitAndGenerateReport() {
 }
 
 // ============================================================
-// PARTICIPANT REPORT (simplified, plain-language, with charts)
+// PARTICIPANT REPORT
 // ============================================================
 function generateParticipantReport(consented, uploaded, popAverages) {
     if (!pSession.complete) return;
@@ -1285,7 +1249,6 @@ function generateParticipantReport(consented, uploaded, popAverages) {
     const isTremor    = pSession.diagnosis === 'TREMOR';
     const statusColor = isTremor ? '#ff4b4b' : '#4bff4b';
 
-    // Per-position stats
     let positionCards = '';
     let allSev = [], allHz = [];
     let overallPeak = 0, overallAvgSevs = [];
@@ -1325,7 +1288,6 @@ function generateParticipantReport(consented, uploaded, popAverages) {
         ? overallAvgSevs.reduce((a,b)=>a+b,0) / overallAvgSevs.length
         : 0;
 
-    // Plain-language assessment
     let assessment = '';
     if (overallAvg < 15) {
         assessment = 'Your motion patterns showed <strong>minimal tremor activity</strong> across all four positions. This is consistent with typical voluntary movement.';
@@ -1341,7 +1303,6 @@ function generateParticipantReport(consented, uploaded, popAverages) {
         ? `<div style="background:#0f2010;border:1px solid #1a4020;border-radius:8px;padding:12px;font-size:12px;color:#4bff4b;margin-bottom:16px;">✓ Your anonymised data has been shared with the TremorPause research dataset. Session ID: <code style="color:#00d4ff">${pSession.sessionId}</code></div>`
         : `<div style="background:#1a1208;border:1px solid #302010;border-radius:8px;padding:12px;font-size:12px;color:#8b949e;margin-bottom:16px;">Your data was not shared with the dataset.</div>`;
 
-    // Population comparison section
     let comparisonSection = '';
     if (popAverages && popAverages.total >= 1) {
         const nSessions = popAverages.total;
@@ -1399,7 +1360,6 @@ function generateParticipantReport(consented, uploaded, popAverages) {
         </div>`;
     }
 
-    // Chart data
     const chartData = JSON.stringify({ sev: allSev, hz: allHz });
 
     const reportHTML = `<!DOCTYPE html>
@@ -1488,7 +1448,6 @@ Plotly.newPlot('charts', fig.data, fig.layout);
 <\/script>
 </body></html>`;
 
-    // Render report inline in the app instead of new tab
     const reportEl = document.getElementById('p-inline-report');
     if (reportEl) {
         reportEl.innerHTML = '';
@@ -1497,17 +1456,14 @@ Plotly.newPlot('charts', fig.data, fig.layout);
         iframe.srcdoc = reportHTML;
         reportEl.appendChild(iframe);
         reportEl.style.display = 'block';
-        // Auto-resize iframe to content height
         iframe.onload = () => {
             try {
                 iframe.style.height = iframe.contentDocument.body.scrollHeight + 40 + 'px';
             } catch(e) { iframe.style.height = '800px'; }
         };
     }
-    // Scroll to report
     setTimeout(() => {
         const el = document.getElementById('p-inline-report');
         if (el) el.scrollIntoView({ behavior: 'smooth' });
     }, 300);
 }
-
