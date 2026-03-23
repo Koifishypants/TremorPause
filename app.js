@@ -36,14 +36,16 @@ const SKIP_INITIAL      = 6;   // skip first N windows (calibration settling)
 
 const DEVICEMAP = {
     left: {
-        service: '12345678-1234-5678-1234-56789abcdef1',
-        char:    'abcdef01-1234-5678-1234-56789abcdef1',
-        motor:   'abcdef02-1234-5678-1234-56789abcdef1'
+        service:  '12345678-1234-5678-1234-56789abcdef1',
+        char:     'abcdef01-1234-5678-1234-56789abcdef1',
+        motor:    'abcdef02-1234-5678-1234-56789abcdef1',
+        disable:  'abcdef03-1234-5678-1234-56789abcdef1'
     },
     right: {
-        service: '12345678-1234-5678-1234-56789abcdef2',
-        char:    'abcdef01-1234-5678-1234-56789abcdef2',
-        motor:   'abcdef02-1234-5678-1234-56789abcdef2'
+        service:  '12345678-1234-5678-1234-56789abcdef2',
+        char:     'abcdef01-1234-5678-1234-56789abcdef2',
+        motor:    'abcdef02-1234-5678-1234-56789abcdef2',
+        disable:  'abcdef03-1234-5678-1234-56789abcdef2'
     }
 };
 
@@ -76,7 +78,7 @@ let session = {
 function makeSideState() {
     return {
         device: null, gattServer: null, service: null,
-        imuChar: null, motorChar: null,
+        imuChar: null, motorChar: null, disableChar: null,
         rawBuffer: [], timestamps: [],
         calibBuf: [], bias: [0, 0, 0],
         calibrated: false, connected: false,
@@ -309,8 +311,13 @@ async function connectBluetooth(side, forceAll = false) {
             try { motorChar = await service.getCharacteristic(cfg.motor); addDiagLog(side, 'Motor char OK'); }
             catch (e) { addDiagLog(side, 'Motor char: not found'); }
         }
+        let disableChar = null;
+        if (cfg.disable) {
+            try { disableChar = await service.getCharacteristic(cfg.disable); addDiagLog(side, 'Disable char OK'); }
+            catch (e) { addDiagLog(side, 'Disable char: not found'); }
+        }
         const s = sideState[side];
-        Object.assign(s, { device, gattServer: server, service, imuChar, motorChar, connected: true });
+        Object.assign(s, { device, gattServer: server, service, imuChar, motorChar, disableChar, connected: true });
         setConnStatus(side, 'Calibrating…', '#ff9500');
         btn.textContent = 'Disconnect'; btn.disabled = false;
         btn.onclick = () => disconnectBluetooth(side);
@@ -346,6 +353,13 @@ async function sendMotorFeedback(side, severity) {
     const mc = sideState[side].motorChar;
     if (!mc) return;
     try { await mc.writeValueWithoutResponse(new Uint8Array([Math.min(Math.floor(severity), 100)])); }
+    catch (_) {}
+}
+
+async function sendMotorDisable(side, disabled) {
+    const dc = sideState[side].disableChar;
+    if (!dc) return;
+    try { await dc.writeValueWithoutResponse(new Uint8Array([disabled ? 1 : 0])); }
     catch (_) {}
 }
 
@@ -405,6 +419,9 @@ function startPositionRecording() {
     const cd  = document.getElementById('countdown');
     btn.disabled = true;
 
+    // Disable motor during recording
+    ['left', 'right'].forEach(side => sendMotorDisable(side, true));
+
     let rem = RECORDING_SECONDS;
     cd.textContent = `${rem}s remaining`; cd.style.color = '#ff9500';
 
@@ -414,6 +431,8 @@ function startPositionRecording() {
         if (rem <= 0) {
             clearInterval(assessmentTimer);
             isRecording = false;
+            // Re-enable motor after recording
+            ['left', 'right'].forEach(side => sendMotorDisable(side, false));
             finishPosition();
         }
     }, 1000);
@@ -1180,6 +1199,9 @@ function pStartRecording() {
     isRecording = true;
     activeMode  = 'participant';
 
+    // Disable motor during recording so flywheel doesn't affect sensor data
+    sendMotorDisable(pSide, true);
+
     let rem = P_RECORDING_SECONDS;
     document.getElementById('p-record-timer').textContent = rem;
 
@@ -1190,6 +1212,10 @@ function pStartRecording() {
             clearInterval(pRecordTimer);
             isRecording = false;
             activeMode  = 'researcher';
+
+            // Re-enable motor now that recording is done
+            sendMotorDisable(pSide, false);
+
             document.getElementById('p-record-countdown').style.display = 'none';
             document.getElementById('p-record-done').style.display      = 'block';
 
