@@ -1110,6 +1110,8 @@ async function pConnectDevice() {
             const s = sideState[pSide];
             if (s.calibrated) {
                 clearInterval(waitForCalib);
+                // Kill motor immediately — keep it off for the entire participant session
+                sendMotorDisable(pSide, true);
                 status.textContent = '';
                 document.getElementById('p-connect-next').style.display = 'block';
                 btn.style.display = 'none';
@@ -1199,9 +1201,6 @@ function pStartRecording() {
     isRecording = true;
     activeMode  = 'participant';
 
-    // Disable motor during recording so flywheel doesn't affect sensor data
-    sendMotorDisable(pSide, true);
-
     let rem = P_RECORDING_SECONDS;
     document.getElementById('p-record-timer').textContent = rem;
 
@@ -1212,9 +1211,6 @@ function pStartRecording() {
             clearInterval(pRecordTimer);
             isRecording = false;
             activeMode  = 'researcher';
-
-            // Re-enable motor now that recording is done
-            sendMotorDisable(pSide, false);
 
             document.getElementById('p-record-countdown').style.display = 'none';
             document.getElementById('p-record-done').style.display      = 'block';
@@ -1235,6 +1231,7 @@ function pResetFull() {
     clearInterval(pRecordTimer);
     clearInterval(pCalibTimer);
     activeMode = 'researcher';
+    sendMotorDisable(pSide, false);
     pSession = { sessionId:'', diagnosis:'VOLUNTARY', currentPos:0, complete:false, positionData:[[], [], [], []] };
     pShowScreen('p-screen-welcome');
 }
