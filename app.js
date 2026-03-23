@@ -276,7 +276,7 @@ function handleIMU(event, side) {
     // Falls back to 0 until the first window is computed.
     // Motor feedback is suppressed during recording so data
     // collection is not affected.
-    if (!isRecording) {
+    if (!isRecording && !s.motorDisabled) {
         sendMotorFeedback(side, s.lastSeverity);
     }
 }
@@ -1113,7 +1113,8 @@ async function pConnectDevice() {
             const s = sideState[pSide];
             if (s.calibrated) {
                 clearInterval(waitForCalib);
-                // Kill motor immediately — keep it off for the entire participant session
+                // Kill motor immediately — set flag synchronously so handleIMU stops sending feedback
+                sideState[pSide].motorDisabled = true;
                 sendMotorDisable(pSide, true);
                 status.textContent = '';
                 document.getElementById('p-connect-next').style.display = 'block';
