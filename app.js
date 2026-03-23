@@ -276,7 +276,7 @@ function handleIMU(event, side) {
     // Falls back to 0 until the first window is computed.
     // Motor feedback is suppressed during recording so data
     // collection is not affected.
-    if (!isRecording && !s.motorDisabled) {
+    if (!isRecording && activeMode !== 'participant') {
         sendMotorFeedback(side, s.lastSeverity);
     }
 }
@@ -352,7 +352,7 @@ function onDisconnect(side) {
 
 async function sendMotorFeedback(side, severity) {
     const s = sideState[side];
-    if (!s.motorChar || s.motorDisabled) return;
+    if (!s.motorChar) return;
     try { await s.motorChar.writeValueWithoutResponse(new Uint8Array([Math.min(Math.floor(severity), 100)])); }
     catch (_) {}
 }
