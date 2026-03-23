@@ -83,7 +83,8 @@ function makeSideState() {
         calibBuf: [], bias: [0, 0, 0],
         calibrated: false, connected: false,
         peakSeverity: 0, sampleCount: 0,
-        lastSeverity: 0   // v7: tracks most recent severity for 50Hz motor updates
+        lastSeverity: 0,
+        motorDisabled: false   // when true, sendMotorFeedback is blocked
     };
 }
 const sideState = { left: makeSideState(), right: makeSideState() };
@@ -350,16 +351,18 @@ function onDisconnect(side) {
 }
 
 async function sendMotorFeedback(side, severity) {
-    const mc = sideState[side].motorChar;
-    if (!mc) return;
-    try { await mc.writeValueWithoutResponse(new Uint8Array([Math.min(Math.floor(severity), 100)])); }
+    const s = sideState[side];
+    if (!s.motorChar || s.motorDisabled) return;
+    try { await s.motorChar.writeValueWithoutResponse(new Uint8Array([Math.min(Math.floor(severity), 100)])); }
     catch (_) {}
 }
 
 async function sendMotorDisable(side, disabled) {
-    const dc = sideState[side].disableChar;
-    if (!dc) return;
-    try { await dc.writeValueWithoutResponse(new Uint8Array([disabled ? 1 : 0])); }
+    const s = sideState[side];
+    s.motorDisabled = disabled;
+    if (!s.motorChar) return;
+    // Send 0 so the Arduino ramps the motor down to ESC_STOP
+    try { await s.motorChar.writeValueWithoutResponse(new Uint8Array([0])); }
     catch (_) {}
 }
 
