@@ -1074,6 +1074,7 @@ function pBack(showId, hideId) {
 }
 
 function pGoToConnect() {
+    activeMode = 'participant';  // block motor feedback for entire participant session
     const diag = document.getElementById('p-diagnosis-select').value;
     pSession = {
         sessionId:    generateSessionId(),
