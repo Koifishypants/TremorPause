@@ -360,9 +360,9 @@ async function sendMotorFeedback(side, severity) {
 async function sendMotorDisable(side, disabled) {
     const s = sideState[side];
     s.motorDisabled = disabled;
-    if (!s.motorChar) return;
-    // Send 0 so the Arduino ramps the motor down to ESC_STOP
-    try { await s.motorChar.writeValueWithoutResponse(new Uint8Array([0])); }
+    // Write to disableChar — triggers motorHardOff()/motorHardOn() on Arduino
+    if (!s.disableChar) return;
+    try { await s.disableChar.writeValueWithoutResponse(new Uint8Array([disabled ? 1 : 0])); }
     catch (_) {}
 }
 
