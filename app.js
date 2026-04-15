@@ -36,16 +36,14 @@ const SKIP_INITIAL      = 6;   // skip first N windows (calibration settling)
 
 const DEVICEMAP = {
     left: {
-        service:  '12345678-1234-5678-1234-56789abcdef1',
-        char:     'abcdef01-1234-5678-1234-56789abcdef1',
-        motor:    'abcdef02-1234-5678-1234-56789abcdef1',
-        disable:  'abcdef03-1234-5678-1234-56789abcdef1'
+        service: '12345678-1234-5678-1234-56789abcdef1',
+        char:    'abcdef01-1234-5678-1234-56789abcdef1',
+        motor:   'abcdef02-1234-5678-1234-56789abcdef1'
     },
     right: {
-        service:  '12345678-1234-5678-1234-56789abcdef2',
-        char:     'abcdef01-1234-5678-1234-56789abcdef2',
-        motor:    'abcdef02-1234-5678-1234-56789abcdef2',
-        disable:  'abcdef03-1234-5678-1234-56789abcdef2'
+        service: '12345678-1234-5678-1234-56789abcdef2',
+        char:    'abcdef01-1234-5678-1234-56789abcdef2',
+        motor:   'abcdef02-1234-5678-1234-56789abcdef2'
     }
 };
 
@@ -78,13 +76,12 @@ let session = {
 function makeSideState() {
     return {
         device: null, gattServer: null, service: null,
-        imuChar: null, motorChar: null, disableChar: null,
+        imuChar: null, motorChar: null,
         rawBuffer: [], timestamps: [],
         calibBuf: [], bias: [0, 0, 0],
         calibrated: false, connected: false,
         peakSeverity: 0, sampleCount: 0,
-        lastSeverity: 0,
-        motorDisabled: false   // when true, sendMotorFeedback is blocked
+        lastSeverity: 0   // v7: tracks most recent severity for 50Hz motor updates
     };
 }
 const sideState = { left: makeSideState(), right: makeSideState() };
@@ -276,7 +273,7 @@ function handleIMU(event, side) {
     // Falls back to 0 until the first window is computed.
     // Motor feedback is suppressed during recording so data
     // collection is not affected.
-    if (!isRecording && activeMode !== 'participant') {
+    if (!isRecording) {
         sendMotorFeedback(side, s.lastSeverity);
     }
 }
@@ -312,13 +309,8 @@ async function connectBluetooth(side, forceAll = false) {
             try { motorChar = await service.getCharacteristic(cfg.motor); addDiagLog(side, 'Motor char OK'); }
             catch (e) { addDiagLog(side, 'Motor char: not found'); }
         }
-        let disableChar = null;
-        if (cfg.disable) {
-            try { disableChar = await service.getCharacteristic(cfg.disable); addDiagLog(side, 'Disable char OK'); }
-            catch (e) { addDiagLog(side, 'Disable char: not found'); }
-        }
         const s = sideState[side];
-        Object.assign(s, { device, gattServer: server, service, imuChar, motorChar, disableChar, connected: true });
+        Object.assign(s, { device, gattServer: server, service, imuChar, motorChar, connected: true });
         setConnStatus(side, 'Calibrating…', '#ff9500');
         btn.textContent = 'Disconnect'; btn.disabled = false;
         btn.onclick = () => disconnectBluetooth(side);
@@ -351,18 +343,9 @@ function onDisconnect(side) {
 }
 
 async function sendMotorFeedback(side, severity) {
-    const s = sideState[side];
-    if (!s.motorChar) return;
-    try { await s.motorChar.writeValueWithoutResponse(new Uint8Array([Math.min(Math.floor(severity), 100)])); }
-    catch (_) {}
-}
-
-async function sendMotorDisable(side, disabled) {
-    const s = sideState[side];
-    s.motorDisabled = disabled;
-    // Write to disableChar — triggers motorHardOff()/motorHardOn() on Arduino
-    if (!s.disableChar) return;
-    try { await s.disableChar.writeValueWithoutResponse(new Uint8Array([disabled ? 1 : 0])); }
+    const mc = sideState[side].motorChar;
+    if (!mc) return;
+    try { await mc.writeValueWithoutResponse(new Uint8Array([Math.min(Math.floor(severity), 100)])); }
     catch (_) {}
 }
 
@@ -422,9 +405,6 @@ function startPositionRecording() {
     const cd  = document.getElementById('countdown');
     btn.disabled = true;
 
-    // Disable motor during recording
-    ['left', 'right'].forEach(side => sendMotorDisable(side, true));
-
     let rem = RECORDING_SECONDS;
     cd.textContent = `${rem}s remaining`; cd.style.color = '#ff9500';
 
@@ -434,8 +414,6 @@ function startPositionRecording() {
         if (rem <= 0) {
             clearInterval(assessmentTimer);
             isRecording = false;
-            // Re-enable motor after recording
-            ['left', 'right'].forEach(side => sendMotorDisable(side, false));
             finishPosition();
         }
     }, 1000);
@@ -1074,7 +1052,6 @@ function pBack(showId, hideId) {
 }
 
 function pGoToConnect() {
-    activeMode = 'participant';  // block motor feedback for entire participant session
     const diag = document.getElementById('p-diagnosis-select').value;
     pSession = {
         sessionId:    generateSessionId(),
@@ -1114,9 +1091,6 @@ async function pConnectDevice() {
             const s = sideState[pSide];
             if (s.calibrated) {
                 clearInterval(waitForCalib);
-                // Kill motor immediately — set flag synchronously so handleIMU stops sending feedback
-                sideState[pSide].motorDisabled = true;
-                sendMotorDisable(pSide, true);
                 status.textContent = '';
                 document.getElementById('p-connect-next').style.display = 'block';
                 btn.style.display = 'none';
@@ -1216,7 +1190,6 @@ function pStartRecording() {
             clearInterval(pRecordTimer);
             isRecording = false;
             activeMode  = 'researcher';
-
             document.getElementById('p-record-countdown').style.display = 'none';
             document.getElementById('p-record-done').style.display      = 'block';
 
@@ -1236,7 +1209,6 @@ function pResetFull() {
     clearInterval(pRecordTimer);
     clearInterval(pCalibTimer);
     activeMode = 'researcher';
-    sendMotorDisable(pSide, false);
     pSession = { sessionId:'', diagnosis:'VOLUNTARY', currentPos:0, complete:false, positionData:[[], [], [], []] };
     pShowScreen('p-screen-welcome');
 }
