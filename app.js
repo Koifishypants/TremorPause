@@ -731,7 +731,7 @@ function updateDebugPanel(side, fa, rawProb, freqWeight, magWeight, severity, ac
         `raw_prob    : ${rawProb.toFixed(4)}`,
         `freq_weight : ${freqWeight.toFixed(4)}  sigmoid(hz - ${freqThreshold.toFixed(2)}Hz)`,
         `mag_scale   : ${magWeight.toFixed(4)}  max_mag/MAG_REF (${MAG_REF})`,
-        `max_mag     : ${featureArray[2].toFixed(2)} °/s`,
+        `max_mag     : ${fa[2].toFixed(2)} °/s`,
         `SEVERITY    : ${severity.toFixed(2)}%`
     ];
     const el = document.getElementById(`${side}-debug-features`);
