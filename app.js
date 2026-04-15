@@ -13,9 +13,11 @@ const CALIB_SAMPLES = 50;
 const DEFAULT_FT    = 9.32;
 let freqThreshold   = DEFAULT_FT;
 
-// Magnitude sigmoid threshold (mag_t): midpoint between tremor avg (3.2) and control avg (1.6)
-// Calibrate via Youden's J on mean_mag ROC — same method used for f_t
-const DEFAULT_MAG_T = 2.5;   // °/s
+// Std-mag sigmoid threshold: midpoint between tremor avg std_mag (2.5) and control avg (1.3)
+// Uses std_mag rather than mean_mag — std_mag captures oscillatory intensity within the window,
+// making it robust to external movement (walking/reaching raises mean_mag but not std_mag).
+// Calibrate via Youden's J on std_mag ROC — same method used for f_t.
+const DEFAULT_MAG_T = 1.9;   // °/s  (std_mag threshold)
 let magThreshold    = DEFAULT_MAG_T;
 
 // Firebase — declared here so initFirebase() can be called from DOMContentLoaded
@@ -244,12 +246,12 @@ function handleIMU(event, side) {
         const { featureArray, domFreq, actualFs } = extractFeatures(winXYZ, s.bias, winTime);
         const rawProb    = predictProba(featureArray);
         const freqWeight = sigmoidGate(domFreq, freqThreshold);
-        const magWeight  = sigmoidMag(featureArray[0], magThreshold);  // featureArray[0] = mean_mag
+        const magWeight  = sigmoidMag(featureArray[1], magThreshold);  // featureArray[1] = std_mag (robust to external movement)
         const severity   = rawProb * freqWeight * magWeight * 100;
 
         if (severity > s.peakSeverity) s.peakSeverity = severity;
         updateDebugPanel(side, featureArray, rawProb, freqWeight, magWeight, severity, actualFs);
-        updateSideUI(side, severity, domFreq, actualFs, featureArray[0]);
+        updateSideUI(side, severity, domFreq, actualFs, featureArray[1]);
 
         // v7: store latest severity so every IMU sample can send it to the motor
         s.lastSeverity = severity;
@@ -724,7 +726,7 @@ function updateDebugPanel(side, fa, rawProb, freqWeight, magWeight, severity, ac
         ``,
         `raw_prob    : ${rawProb.toFixed(4)}`,
         `freq_weight : ${freqWeight.toFixed(4)}  sigmoid(hz - ${freqThreshold.toFixed(2)}Hz)`,
-        `mag_weight  : ${magWeight.toFixed(4)}  sigmoid(mag - ${magThreshold.toFixed(2)})`,
+        `mag_weight  : ${magWeight.toFixed(4)}  sigmoid(std_mag - ${magThreshold.toFixed(2)})`,
         `SEVERITY    : ${severity.toFixed(2)}%`
     ];
     const el = document.getElementById(`${side}-debug-features`);
@@ -757,7 +759,7 @@ const STATUS_LEVELS = [
 ];
 const severityMeta = sev => STATUS_LEVELS.find(s => sev < s.max) ?? STATUS_LEVELS.at(-1);
 
-function updateSideUI(side, severity, hz, fs, meanMag) {
+function updateSideUI(side, severity, hz, fs, stdMag) {
     const m = severityMeta(severity);
     const s = sideState[side];
     document.getElementById(`${side}-sev`).textContent   = `${severity.toFixed(1)}%`;
@@ -770,7 +772,7 @@ function updateSideUI(side, severity, hz, fs, meanMag) {
     document.getElementById(`${side}-motor`).style.color = severity > 15 ? '#ff9500' : '#8e8e93';
     const magEl  = document.getElementById(`${side}-mag`);
     const peakEl = document.getElementById(`${side}-peak`);
-    if (magEl)  magEl.textContent  = `${(meanMag !== undefined ? meanMag : 0).toFixed(2)} °/s`;
+    if (magEl)  magEl.textContent  = `${(stdMag !== undefined ? stdMag : 0).toFixed(2)} °/s`;
     if (peakEl) peakEl.textContent = `${s.peakSeverity.toFixed(1)}%`;
 }
 
@@ -1324,7 +1326,7 @@ function generateParticipantReport(consented, uploaded, popAverages) {
         P_POSITIONS.forEach((pos, i) => {
             const myRows = pSession.positionData[i].slice(P_SKIP_INITIAL);
             if (!myRows.length) return;
-            const mySevs = myRows.map(r => r.raw_prob * sigmoidReport(r.dom_freq_hz, ft) * sigmoidMag(r.mean_mag, magThreshold) * 100);
+            const mySevs = myRows.map(r => r.raw_prob * sigmoidReport(r.dom_freq_hz, ft) * sigmoidMag(r.std_mag, magThreshold) * 100);
             const myAvg  = mySevs.reduce((a,b)=>a+b,0) / mySevs.length;
             const pop    = popAverages[pos.key];
             if (!pop || pop.avg === null || pop.n === 0) return;
