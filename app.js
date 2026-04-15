@@ -17,7 +17,7 @@ let freqThreshold   = DEFAULT_FT;
 // Uses std_mag rather than mean_mag — std_mag captures oscillatory intensity within the window,
 // making it robust to external movement (walking/reaching raises mean_mag but not std_mag).
 // Calibrate via Youden's J on std_mag ROC — same method used for f_t.
-const DEFAULT_MAG_T = 1.9;   // °/s  (std_mag threshold)
+const DEFAULT_MAG_T = 5.0;   // °/s  (std_mag threshold, scaled for 104Hz — 1.9×2.5 sample rate ratio)
 let magThreshold    = DEFAULT_MAG_T;
 
 // Firebase — declared here so initFirebase() can be called from DOMContentLoaded
@@ -197,10 +197,14 @@ function sigmoidReport(hz, ft) {
     return 1.0 / (1.0 + Math.exp(-2.5 * (hz - ft)));
 }
 
-// Magnitude sigmoid — mirrors sigmoidGate for frequency.
-// Ensures high-magnitude motion contributes proportionally to severity.
-function sigmoidMag(mag, mag_t) {
-    return 1.0 / (1.0 + Math.exp(-1.0 * (mag - mag_t)));
+// Amplitude scaling — tune MAG_REF to your typical mid-severity tremor's max_mag (read from Std Mag box).
+const MAG_REF       = 50.0;  // °/s at 104Hz: max_mag at this value → neutral (1× factor)
+const MAG_MAX_BOOST = 2.0;   // max multiplier — large tremors capped so severity ≤ 100%
+
+// Amplitude scale factor: severity proportional to max_mag relative to MAG_REF.
+// Large tremors → factor > 1 (boosted). Small tremors → factor < 1 (reduced).
+function magScaleFactor(maxMag) {
+    return Math.min(maxMag / MAG_REF, MAG_MAX_BOOST);
 }
 
 // ============================================================
@@ -246,12 +250,12 @@ function handleIMU(event, side) {
         const { featureArray, domFreq, actualFs } = extractFeatures(winXYZ, s.bias, winTime);
         const rawProb    = predictProba(featureArray);
         const freqWeight = sigmoidGate(domFreq, freqThreshold);
-        const magWeight  = sigmoidMag(featureArray[1], magThreshold);  // featureArray[1] = std_mag (robust to external movement)
-        const severity   = rawProb * freqWeight * magWeight * 100;
+        const magWeight  = magScaleFactor(featureArray[2]);  // featureArray[2] = max_mag
+        const severity   = Math.min(rawProb * freqWeight * magWeight * 100, 100);
 
         if (severity > s.peakSeverity) s.peakSeverity = severity;
         updateDebugPanel(side, featureArray, rawProb, freqWeight, magWeight, severity, actualFs);
-        updateSideUI(side, severity, domFreq, actualFs, featureArray[1]);
+        updateSideUI(side, severity, domFreq, actualFs, featureArray[2]);
 
         // v7: store latest severity so every IMU sample can send it to the motor
         s.lastSeverity = severity;
@@ -726,7 +730,8 @@ function updateDebugPanel(side, fa, rawProb, freqWeight, magWeight, severity, ac
         ``,
         `raw_prob    : ${rawProb.toFixed(4)}`,
         `freq_weight : ${freqWeight.toFixed(4)}  sigmoid(hz - ${freqThreshold.toFixed(2)}Hz)`,
-        `mag_weight  : ${magWeight.toFixed(4)}  sigmoid(std_mag - ${magThreshold.toFixed(2)})`,
+        `mag_scale   : ${magWeight.toFixed(4)}  max_mag/MAG_REF (${MAG_REF})`,
+        `max_mag     : ${featureArray[2].toFixed(2)} °/s`,
         `SEVERITY    : ${severity.toFixed(2)}%`
     ];
     const el = document.getElementById(`${side}-debug-features`);
@@ -759,7 +764,7 @@ const STATUS_LEVELS = [
 ];
 const severityMeta = sev => STATUS_LEVELS.find(s => sev < s.max) ?? STATUS_LEVELS.at(-1);
 
-function updateSideUI(side, severity, hz, fs, stdMag) {
+function updateSideUI(side, severity, hz, fs, maxMag) {
     const m = severityMeta(severity);
     const s = sideState[side];
     document.getElementById(`${side}-sev`).textContent   = `${severity.toFixed(1)}%`;
@@ -772,7 +777,7 @@ function updateSideUI(side, severity, hz, fs, stdMag) {
     document.getElementById(`${side}-motor`).style.color = severity > 15 ? '#ff9500' : '#8e8e93';
     const magEl  = document.getElementById(`${side}-mag`);
     const peakEl = document.getElementById(`${side}-peak`);
-    if (magEl)  magEl.textContent  = `${(stdMag !== undefined ? stdMag : 0).toFixed(2)} °/s`;
+    if (magEl)  magEl.textContent  = `${(maxMag !== undefined ? maxMag : 0).toFixed(1)} °/s`;
     if (peakEl) peakEl.textContent = `${s.peakSeverity.toFixed(1)}%`;
 }
 
@@ -1326,7 +1331,7 @@ function generateParticipantReport(consented, uploaded, popAverages) {
         P_POSITIONS.forEach((pos, i) => {
             const myRows = pSession.positionData[i].slice(P_SKIP_INITIAL);
             if (!myRows.length) return;
-            const mySevs = myRows.map(r => r.raw_prob * sigmoidReport(r.dom_freq_hz, ft) * sigmoidMag(r.std_mag, magThreshold) * 100);
+            const mySevs = myRows.map(r => Math.min(r.raw_prob * sigmoidReport(r.dom_freq_hz, ft) * Math.min((r.max_mag || MAG_REF) / MAG_REF, MAG_MAX_BOOST) * 100, 100));
             const myAvg  = mySevs.reduce((a,b)=>a+b,0) / mySevs.length;
             const pop    = popAverages[pos.key];
             if (!pop || pop.avg === null || pop.n === 0) return;
