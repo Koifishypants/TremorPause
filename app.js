@@ -13,12 +13,10 @@ const CALIB_SAMPLES = 50;
 const DEFAULT_FT    = 9.32;
 let freqThreshold   = DEFAULT_FT;
 
-// Std-mag sigmoid threshold: midpoint between tremor avg std_mag (2.5) and control avg (1.3)
-// Uses std_mag rather than mean_mag — std_mag captures oscillatory intensity within the window,
-// making it robust to external movement (walking/reaching raises mean_mag but not std_mag).
-// Calibrate via Youden's J on std_mag ROC — same method used for f_t.
-const DEFAULT_MAG_T = 5.0;   // °/s  (std_mag threshold, scaled for 104Hz — 1.9×2.5 sample rate ratio)
-let magThreshold    = DEFAULT_MAG_T;
+// Amplitude scaling: severity scales with max_mag so large tremors score higher than tiny fast ones.
+// MAG_REF = max_mag value for neutral (1×) scaling. Derived from your data scaled to 104Hz.
+const MAG_REF       = 30.0;   // °/s
+const MAG_MAX_BOOST = 2.0;    // cap so severity stays ≤ 100%
 
 // Firebase — declared here so initFirebase() can be called from DOMContentLoaded
 let db = null;
@@ -197,12 +195,6 @@ function sigmoidReport(hz, ft) {
     return 1.0 / (1.0 + Math.exp(-2.5 * (hz - ft)));
 }
 
-// Amplitude scaling — tune MAG_REF to your typical mid-severity tremor's max_mag (read from Std Mag box).
-const MAG_REF       = 30.0;  // °/s — midpoint of tremor avg (36.8) and control avg (25.2) at 104Hz, derived from training data
-const MAG_MAX_BOOST = 2.0;   // max multiplier — large tremors capped so severity ≤ 100%
-
-// Amplitude scale factor: severity proportional to max_mag relative to MAG_REF.
-// Large tremors → factor > 1 (boosted). Small tremors → factor < 1 (reduced).
 function magScaleFactor(maxMag) {
     return Math.min(maxMag / MAG_REF, MAG_MAX_BOOST);
 }
@@ -250,7 +242,7 @@ function handleIMU(event, side) {
         const { featureArray, domFreq, actualFs } = extractFeatures(winXYZ, s.bias, winTime);
         const rawProb    = predictProba(featureArray);
         const freqWeight = sigmoidGate(domFreq, freqThreshold);
-        const magWeight  = magScaleFactor(featureArray[2]);  // featureArray[2] = max_mag
+        const magWeight  = magScaleFactor(featureArray[2]);
         const severity   = Math.min(rawProb * freqWeight * magWeight * 100, 100);
 
         if (severity > s.peakSeverity) s.peakSeverity = severity;
@@ -729,9 +721,8 @@ function updateDebugPanel(side, fa, rawProb, freqWeight, magWeight, severity, ac
         `vib_rate    : ${fa[5]}`,
         ``,
         `raw_prob    : ${rawProb.toFixed(4)}`,
-        `freq_weight : ${freqWeight.toFixed(4)}  sigmoid(hz - ${freqThreshold.toFixed(2)}Hz)`,
-        `mag_scale   : ${magWeight.toFixed(4)}  max_mag/MAG_REF (${MAG_REF})`,
-        `max_mag     : ${fa[2].toFixed(2)} °/s`,
+        `freq_weight : ${freqWeight.toFixed(4)}  sigmoid(hz=${domFreq ? domFreq.toFixed(2) : '?'} ft=${freqThreshold})`,
+        `mag_scale   : ${magWeight.toFixed(4)}  max_mag(${fa[2].toFixed(1)}) / MAG_REF(${MAG_REF})`,
         `SEVERITY    : ${severity.toFixed(2)}%`
     ];
     const el = document.getElementById(`${side}-debug-features`);
@@ -777,7 +768,7 @@ function updateSideUI(side, severity, hz, fs, maxMag) {
     document.getElementById(`${side}-motor`).style.color = severity > 15 ? '#ff9500' : '#8e8e93';
     const magEl  = document.getElementById(`${side}-mag`);
     const peakEl = document.getElementById(`${side}-peak`);
-    if (magEl)  magEl.textContent  = `${(maxMag !== undefined ? maxMag : 0).toFixed(1)} °/s`;
+    if (magEl && maxMag !== undefined) magEl.textContent = `${maxMag.toFixed(1)} °/s`;
     if (peakEl) peakEl.textContent = `${s.peakSeverity.toFixed(1)}%`;
 }
 
