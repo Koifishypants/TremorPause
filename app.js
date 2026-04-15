@@ -198,7 +198,7 @@ function sigmoidReport(hz, ft) {
 }
 
 // Amplitude scaling — tune MAG_REF to your typical mid-severity tremor's max_mag (read from Std Mag box).
-const MAG_REF       = 50.0;  // °/s at 104Hz: max_mag at this value → neutral (1× factor)
+const MAG_REF       = 30.0;  // °/s — midpoint of tremor avg (36.8) and control avg (25.2) at 104Hz, derived from training data
 const MAG_MAX_BOOST = 2.0;   // max multiplier — large tremors capped so severity ≤ 100%
 
 // Amplitude scale factor: severity proportional to max_mag relative to MAG_REF.
