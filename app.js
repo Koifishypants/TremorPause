@@ -13,10 +13,8 @@ const CALIB_SAMPLES = 50;
 const DEFAULT_FT    = 9.32;
 let freqThreshold   = DEFAULT_FT;
 
-// Amplitude scaling: severity scales with max_mag so large tremors score higher than tiny fast ones.
-// MAG_REF = max_mag value for neutral (1×) scaling. Derived from your data scaled to 104Hz.
-const MAG_REF       = 30.0;   // °/s
-const MAG_MAX_BOOST = 2.0;    // cap so severity stays ≤ 100%
+const MAG_REF       = 30.0;   // °/s — max_mag reference for neutral scaling (104Hz data)
+const MAG_MAX_BOOST = 2.0;    // cap multiplier so severity stays ≤ 100%
 
 // Firebase — declared here so initFirebase() can be called from DOMContentLoaded
 let db = null;
@@ -195,6 +193,8 @@ function sigmoidReport(hz, ft) {
     return 1.0 / (1.0 + Math.exp(-2.5 * (hz - ft)));
 }
 
+// Large tremors (high max_mag) → factor > 1 → higher severity.
+// Small tremors (low max_mag) → factor < 1 → lower severity.
 function magScaleFactor(maxMag) {
     return Math.min(maxMag / MAG_REF, MAG_MAX_BOOST);
 }
@@ -721,8 +721,8 @@ function updateDebugPanel(side, fa, rawProb, freqWeight, magWeight, severity, ac
         `vib_rate    : ${fa[5]}`,
         ``,
         `raw_prob    : ${rawProb.toFixed(4)}`,
-        `freq_weight : ${freqWeight.toFixed(4)}  sigmoid(hz=${domFreq ? domFreq.toFixed(2) : '?'} ft=${freqThreshold})`,
-        `mag_scale   : ${magWeight.toFixed(4)}  max_mag(${fa[2].toFixed(1)}) / MAG_REF(${MAG_REF})`,
+        `freq_weight : ${freqWeight.toFixed(4)}  sigmoid(hz - ${freqThreshold.toFixed(2)}Hz)`,
+        `mag_scale   : ${magWeight.toFixed(4)}  max_mag=${fa[2].toFixed(1)} / REF=${MAG_REF}`,
         `SEVERITY    : ${severity.toFixed(2)}%`
     ];
     const el = document.getElementById(`${side}-debug-features`);
