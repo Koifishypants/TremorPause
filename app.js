@@ -290,11 +290,20 @@ async function connectBluetooth(side, forceAll = false) {
         const name = deviceNames[side];
         if (name) showToast(`Select "${name}" from the list`);
 
-        const opts = {
-            acceptAllDevices: true,
-            optionalServices: [cfg.service]
-        };
-        addDiagLog(side, `Scan: all devices (looking for "${name}")`);
+        const opts = name
+            ? {
+                filters: [{ name }],
+                optionalServices: [cfg.service]
+              }
+            : {
+                filters: [
+                    { name: 'Left-TremorPause'  },
+                    { name: 'Right-TremorPause' }
+                ],
+                optionalServices: [cfg.service]
+              };
+        addDiagLog(side, `Scan: filtered for "${name || 'Left/Right-TremorPause'}"`);
+
 
         const device  = await navigator.bluetooth.requestDevice(opts);
         addDiagLog(side, `Found: "${device.name || '(unnamed)'}"`);
